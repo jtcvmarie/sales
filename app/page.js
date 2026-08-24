@@ -6,7 +6,6 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  // Instantly scales the photo down to max 800px and compresses to JPEG
   const shrinkImage = (file) => {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -31,7 +30,6 @@ export default function Home() {
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0, width, height);
           
-          // Convert back to a JPEG at 70% quality to guarantee it's under 500KB
           canvas.toBlob((blob) => {
             const newFile = new File([blob], file.name, {
               type: 'image/jpeg',
@@ -50,39 +48,39 @@ export default function Home() {
     const file = e.target.files[0];
     if (!file) return;
 
-    // Reset states before a new search
     setLoading(true);
     setErrorMsg("");
     setResults([]);
     
     try {
-      // 1. Shrink the heavy phone image down
       const smallFile = await shrinkImage(file);
       
       const formData = new FormData();
       formData.append('image', smallFile);
 
-      // 2. Send it securely to our Vercel backend
       const res = await fetch('/api/search', {
         method: 'POST',
         body: formData
       });
       
-      // If Vercel crashes (like a 500 error), this catches it
-      if (!res.ok) {
-        throw new Error("Server failed to process the image. Check your API key!");
-      }
-      
+      // Read the JSON response FIRST, before checking if res.ok failed
       const data = await res.json();
       
-      if (data.error) throw new Error(data.error);
+      // If the backend sent our detailed error, throw THAT exact error to the screen
+      if (data.error) {
+        throw new Error(data.error);
+      }
+      
+      // Fallback just in case Vercel itself crashes entirely
+      if (!res.ok) {
+        throw new Error("Vercel Server Error: " + res.status);
+      }
       
       setResults(data.results || []);
     } catch (error) {
       console.error(error);
       setErrorMsg("Something went wrong: " + error.message);
     } finally {
-      // ALWAYS turn off the loading text, even if it crashes
       setLoading(false); 
     }
   };
