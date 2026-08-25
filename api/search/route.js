@@ -8,12 +8,11 @@ export async function POST(request) {
     if (!file) return NextResponse.json({ error: "No image received" }, { status: 400 });
     if (!process.env.SERPAPI_KEY) return NextResponse.json({ error: "Missing SERPAPI_KEY" }, { status: 500 });
 
-    // 1. LENS UPLOAD & TEXT EXTRACTION
-    const serpApiUploadData = new FormData();
-    serpApiUploadData.append('image', file);
-    serpApiUploadData.append('api_key', process.env.SERPAPI_KEY);
+    const uploadData = new FormData();
+    uploadData.append('image', file);
+    uploadData.append('api_key', process.env.SERPAPI_KEY);
     
-    const uploadRes = await fetch('https://serpapi.com/image', { method: 'POST', body: serpApiUploadData });
+    const uploadRes = await fetch('https://serpapi.com/image', { method: 'POST', body: uploadData });
     const uploadJson = await uploadRes.json();
     if (uploadJson.error) return NextResponse.json({ error: "SerpApi Error: " + uploadJson.error }, { status: 500 });
     
@@ -21,135 +20,126 @@ export async function POST(request) {
     const searchJson = await searchRes.json();
     if (searchJson.error) return NextResponse.json({ error: "Google Lens Error: " + searchJson.error }, { status: 500 });
 
-    let textQuery = "";
-    if (searchJson.knowledge_graph && searchJson.knowledge_graph.length > 0) textQuery = searchJson.knowledge_graph[0].title;
-    else if (searchJson.text_results && searchJson.text_results.length > 0) textQuery = searchJson.text_results.map(t => t.text).join(" ");
-    else if (searchJson.knowledge_graph && searchJson.knowledge_graph.title) textQuery = searchJson.knowledge_graph.title;
-
-    // 2. DISCOGS GRID FOR VISUAL MATCHES (API Powered)
     const allowedSites = ["discogs.com", "ebay.com", "popsike.com", "upcitemdb.com"];
-    const visualMatches = searchJson.visual_matches || [];
-    const curatedMatches = visualMatches.filter(match => allowedSites.some(site => match.link.toLowerCase().includes(site)));
+    const matches = (searchJson.visual_matches || []).filter(match => allowedSites.some(s => match.link.toLowerCase().includes(s))).slice(0, 8);
 
-    const finalMatches = await Promise.all(curatedMatches.map(async (match) => {
-      let discogsData = { have: '--', want: '--', rating: '--', ratingsCount: '--', lastSold: 'API Restricted', low: '--', median: '--', high: '--' };
-      if (match.link.toLowerCase().includes('discogs.com') && process.env.DISCOGS_TOKEN) {
+    // GUARANTEE TEXT QUERY SO EBAY SOLD ALWAYS RUNS
+    let textQuery = "";
+    if (searchJson.knowledge_graph && searchJson.knowledge_graph.length > 0) {
+      textQuery = searchJson.knowledge_graph[0].title;
+    } else if (searchJson.text_results && searchJson.text_results.length > 0) {
+      textQuery = searchJson.text_results.map(t => t.text).join(" ");
+    } else if (matches.length > 0) {
+      // Ultimate fallback: Steal the title from the first match
+      textQuery = matches[0].title.replace(/eBay|Discogs|Popsike/ig, '').replace(/\|.*/, '').trim();
+    }
+
+    // THE AGGRESSIVE HTML SCRAPER
+    const finalMatches = await Promise.all(matches.map(async (match) => {
+      
+      // 1. Discogs Exact HTML Scraper
+      if (match.link.toLowerCase().includes('discogs.com')) {
+        match.discogsData = { have:'--', want:'--', rating:'--', ratingsCount:'--', lastSold:'--', low:'--', median:'--', high:'--' };
         try {
-          let releaseId = null;
-          const mRel = match.link.match(/\/(?:release|sell\/release)\/(\d+)/);
-          const mMast = match.link.match(/\/master\/(\d+)/);
-          const headers = { 'User-Agent': 'RecordLens/1.0', 'Authorization': `Discogs token=${process.env.DISCOGS_TOKEN}` };
-
-          if (mRel) releaseId = mRel[1];
-          else if (mMast) {
-             const masterRes = await fetch(`https://api.discogs.com/masters/${mMast[1]}`, { headers });
-             const masterJson = await masterRes.json();
-             releaseId = masterJson.main_release;
-          }
-
-          if (releaseId) {
-             const relRes = await fetch(`https://api.discogs.com/releases/${releaseId}`, { headers });
-             const relJson = await relRes.json();
-             const priceRes = await fetch(`https://api.discogs.com/marketplace/price_suggestions/${releaseId}`, { headers });
-             const priceJson = await priceRes.json();
-             const fmt = (obj) => obj?.value ? `$${obj.value.toFixed(2)}` : '--';
-
-             discogsData = {
-               have: relJson.community?.have || '--', want: relJson.community?.want || '--',
-               rating: relJson.community?.rating?.average ? `${relJson.community.rating.average} / 5` : '--',
-               ratingsCount: relJson.community?.rating?.count || '--', lastSold: "API Restricted",
-               low: fmt(priceJson["Good (G)"]), median: fmt(priceJson["Very Good Plus (VG+)"]), high: fmt(priceJson["Near Mint (NM or M-)"])
+          const res = await fetch(match.link, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } });
+          const html = await res.text();
+          
+          // Flattens the HTML to kill invisible newlines so the regex works perfectly
+          const flatHTML = html.replace(/\r?\n|\r/g, '').replace(/\s+/g, ' ');
+          const ex = (regex) => { const m = flatHTML.match(regex); return m ? m[1].replace(/<!--.*?-->/g, '').trim() : null; };
+          
+          const have = ex(/Have(?:<!-- -->)?:\s*<\/span>\s*<a[^>]*>([\d,]+)<\/a>/i);
+          if (have) {
+             match.discogsData = {
+               have: have,
+               want: ex(/Want(?:<!-- -->)?:\s*<\/span>\s*<a[^>]*>([\d,]+)<\/a>/i) || '--',
+               rating: ex(/Avg Rating(?:<!-- -->)?:\s*<\/span>\s*<span>(.*?)<\/span>/i) || '--',
+               ratingsCount: ex(/Ratings(?:<!-- -->)?:\s*<\/span>\s*<a[^>]*>([\d,]+)<\/a>/i) || '--',
+               lastSold: ex(/Last Sold(?:<!-- -->)?:\s*<\/span>\s*<a[^>]*>.*?<time[^>]*>([^<]+)<\/time>/i) || ex(/Last Sold(?:<!-- -->)?:\s*<\/span>\s*<span>([^<]+)<\/span>/i) || '--',
+               low: ex(/Low(?:<!-- -->)?:\s*<\/span>\s*<span>([^<]+)<\/span>/i) || '--',
+               median: ex(/Median(?:<!-- -->)?:\s*<\/span>\s*<span>([^<]+)<\/span>/i) || '--',
+               high: ex(/High(?:<!-- -->)?:\s*<\/span>\s*<span>([^<]+)<\/span>/i) || '--'
              };
+          } else if (process.env.DISCOGS_TOKEN) {
+             // Fallback to API if Cloudflare blocked the HTML fetch
+             const mRel = match.link.match(/\/(?:release|sell\/release)\/(\d+)/);
+             if(mRel) {
+                const h = { 'User-Agent': 'RecordLens/1.0', 'Authorization': `Discogs token=${process.env.DISCOGS_TOKEN}` };
+                const [relRes, priceRes] = await Promise.all([
+                   fetch(`https://api.discogs.com/releases/${mRel[1]}`, {headers: h}).then(r=>r.json()),
+                   fetch(`https://api.discogs.com/marketplace/price_suggestions/${mRel[1]}`, {headers: h}).then(r=>r.json())
+                ]);
+                match.discogsData.have = relRes.community?.have || '--';
+                match.discogsData.want = relRes.community?.want || '--';
+                match.discogsData.rating = relRes.community?.rating?.average || '--';
+                match.discogsData.low = priceRes["Good (G)"]?.value ? `$${priceRes["Good (G)"].value.toFixed(2)}` : '--';
+                match.discogsData.median = priceRes["Very Good Plus (VG+)"]?.value ? `$${priceRes["Very Good Plus (VG+)"].value.toFixed(2)}` : '--';
+                match.discogsData.high = priceRes["Near Mint (NM or M-)"]?.value ? `$${priceRes["Near Mint (NM or M-)"].value.toFixed(2)}` : '--';
+             }
           }
         } catch (e) { console.error(e); }
+      } 
+      
+      // 2. eBay Exact HTML Scraper
+      if (match.link.toLowerCase().includes('ebay.com')) {
+        try {
+          const ebayRes = await fetch(match.link, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+          const ebayHtml = await ebayRes.text();
+          const flatEbay = ebayHtml.replace(/\r?\n|\r/g, '').replace(/\s+/g, ' ');
+          
+          // Targets your exact ux-textspans--BOLD classes
+          const mainPrice = flatEbay.match(/class="ux-textspans ux-textspans--BOLD"[^>]*>\s*(US\s*\$[\d,.]+)\s*<\/span>/i);
+          const shipPrice = flatEbay.match(/class="ux-textspans ux-textspans--BOLD"[^>]*>\s*(US\s*\$[\d,.]+)\s*<\/span>[^<]*shipping/i);
+          
+          if (mainPrice) match.ebayPrice = mainPrice[1];
+          if (shipPrice) match.ebayShipping = shipPrice[1];
+        } catch(e) {}
       }
-      return { ...match, discogsData };
+      return match;
     }));
 
-    // 3. TAMPERMONKEY APPRAISAL ENGINE (6-Sample Averages)
-    let appraisal = {
-      discogs: { val: null, link: textQuery ? `https://www.discogs.com/search?q=${encodeURIComponent(textQuery)}&type=all` : '#' },
-      ebayActive: { val: null, link: textQuery ? `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(textQuery)}&_sacat=0&_from=R40` : '#' },
-      ebaySold: { val: null, link: textQuery ? `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(textQuery)}&_sacat=0&_from=R40&rt=nc&LH_Sold=1` : '#' },
-      popsike: { val: null, link: textQuery ? `https://www.popsike.com/php/quicksearch.php?searchtext=${encodeURIComponent(textQuery)}&sortord=dprice` : '#' }
-    };
-    
-    let ebaySoldResults = []; // Saved for the bottom visual list
+    // APPRAISAL MATH & EBAY SOLD FETCH
+    let appraisal = { discogs: {val:null}, ebayActive: {val:null}, ebaySold: {val:null} };
+    let ebaySoldResults = [];
 
     if (textQuery) {
       const promises = [];
-
-      // A. Discogs Average (Via API Search)
-      promises.push((async () => {
-         if(process.env.DISCOGS_TOKEN) {
-            try {
-               const searchRes = await fetch(`https://api.discogs.com/database/search?q=${encodeURIComponent(textQuery)}&per_page=1&type=release`, {headers: {'Authorization': `Discogs token=${process.env.DISCOGS_TOKEN}`}});
-               const searchJson = await searchRes.json();
-               if(searchJson.results && searchJson.results.length > 0) {
-                  const priceRes = await fetch(`https://api.discogs.com/marketplace/price_suggestions/${searchJson.results[0].id}`, {headers: {'Authorization': `Discogs token=${process.env.DISCOGS_TOKEN}`}});
-                  const priceJson = await priceRes.json();
-                  if(priceJson["Very Good Plus (VG+)"]?.value) appraisal.discogs.val = priceJson["Very Good Plus (VG+)"].value;
-               }
-            } catch(e){}
-         }
-      })());
-
-      // B. eBay Active Average (SerpApi - Top 6 limit)
-      promises.push((async () => {
-         try {
-            const res = await fetch(`https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(textQuery)}&api_key=${process.env.SERPAPI_KEY}`);
-            const json = await res.json();
-            let total = 0, count = 0;
-            for(let item of (json.organic_results || [])) {
-               if(item.price && item.price.extracted) {
-                  total += item.price.extracted; count++;
-                  if(count >= 6) break;
-               }
-            }
-            if(count > 0) appraisal.ebayActive.val = total / count;
-         } catch(e){}
-      })());
-
-      // C. eBay Sold Average & Visual List (SerpApi - Top 6 limit)
-      promises.push((async () => {
-         try {
-            const res = await fetch(`https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(textQuery)}&LH_Sold=1&LH_Complete=1&api_key=${process.env.SERPAPI_KEY}`);
-            const json = await res.json();
+      
+      // Fetch eBay Sold
+      promises.push(
+         fetch(`https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(textQuery)}&LH_Sold=1&LH_Complete=1&api_key=${process.env.SERPAPI_KEY}`)
+         .then(r => r.json())
+         .then(json => {
             ebaySoldResults = (json.organic_results || []).slice(0, 10);
             let total = 0, count = 0;
             for(let item of ebaySoldResults) {
-               if(item.price && item.price.extracted) {
-                  total += item.price.extracted; count++;
-                  if(count >= 6) break;
-               }
+               if(item.price && item.price.extracted) { total += item.price.extracted; count++; if(count >= 6) break; }
             }
             if(count > 0) appraisal.ebaySold.val = total / count;
-         } catch(e){}
-      })());
+         }).catch(e=>console.error(e))
+      );
 
-      // D. Popsike HTML Scraper (Top 6 limit > $5)
-      promises.push((async () => {
-         try {
-            const res = await fetch(appraisal.popsike.link, {headers:{'User-Agent':'Mozilla/5.0'}});
-            const html = await res.text();
-            const bTags = html.match(/<b>(.*?)<\/b>/g) || [];
+      // Fetch eBay Active Avg
+      promises.push(
+         fetch(`https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(textQuery)}&api_key=${process.env.SERPAPI_KEY}`)
+         .then(r => r.json())
+         .then(json => {
             let total = 0, count = 0;
-            for(let tag of bTags) {
-               const cleanText = tag.replace(/<[^>]+>/g, '').replace(/[\s\u00A0]/g, '');
-               const m = cleanText.match(/^[\$£€]?([0-9]+(,[0-9]{3})*(\.[0-9]{2})?)$/);
-               if(m) {
-                  const val = parseFloat(m[1].replace(/,/g, ""));
-                  if(!isNaN(val) && val > 5) { total += val; count++; if(count >= 6) break; }
-               }
+            for(let item of (json.organic_results || [])) {
+               if(item.price && item.price.extracted) { total += item.price.extracted; count++; if(count >= 6) break; }
             }
-            if(count > 0) appraisal.popsike.val = total / count;
-         } catch(e){}
-      })());
+            if(count > 0) appraisal.ebayActive.val = total / count;
+         }).catch(e=>console.error(e))
+      );
+
+      // Map Discogs Median
+      const firstDiscogs = finalMatches.find(m => m.link.includes('discogs.com') && m.discogsData?.median && m.discogsData.median !== '--');
+      if (firstDiscogs) appraisal.discogs.val = parseFloat(firstDiscogs.discogsData.median.replace(/[^0-9.]/g, ''));
 
       await Promise.all(promises);
     }
 
-    return NextResponse.json({ results: finalMatches, ebaySold: ebaySoldResults, textQuery: textQuery, appraisal: appraisal });
+    return NextResponse.json({ results: finalMatches, ebaySold: ebaySoldResults, textQuery, appraisal });
     
   } catch (error) {
     return NextResponse.json({ error: "Server crashed: " + error.message }, { status: 500 });
