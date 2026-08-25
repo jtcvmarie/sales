@@ -26,28 +26,31 @@ export async function POST(request) {
     const allowedSites = ["discogs.com", "ebay.com", "popsike.com", "upcitemdb.com"];
     const visualMatches = (searchJson.visual_matches || []).filter(match => match.link && allowedSites.some(s => match.link.toLowerCase().includes(s))).slice(0, 10);
 
-    // 1. SMART TEXT EXTRACTION (Only Letters/Numbers to guarantee eBay Sold matches)
+    // 1. SAFE TEXT EXTRACTION (Fixed the "" bug by replacing hyphens instead of deleting after them)
     let rawTitle = searchJson.knowledge_graph?.[0]?.title || visualMatches[0]?.title || searchJson.text_results?.[0]?.text || "Vinyl Record";
     let cleanStr = rawTitle.replace(/eBay|Discogs|Popsike|Vinyl|LP|CD|Record|Album/ig, '')
-                           .replace(/[^a-zA-Z0-9\s]/g, ' ') // Deletes all symbols, hyphens, and pipes
+                           .replace(/[-|—]/g, ' ') // Swaps dashes and pipes for spaces so we don't lose the title
+                           .replace(/\s+/g, ' ')
                            .trim();
-    let textQuery = cleanStr.split(/\s+/).filter(w => w.length > 0).slice(0, 5).join(" ");
-    if (!textQuery) textQuery = "Vinyl Record";
+    
+    let textQuery = cleanStr.split(' ').slice(0, 5).join(' ');
+    if (!textQuery || textQuery.length < 3) textQuery = "Vinyl Record";
 
-    // 2. PROCESS ALL MATCHES (Discogs API & eBay Scraper)
+    // 2. EXPLICIT OBJECT MAPPING TO PREVENT NEXT.JS FROM DROPPING DATA
     const finalMatches = await Promise.all(visualMatches.map(async (match) => {
-        let result = { ...match };
+        let discogsData = null;
+        let ebayScrapedPrice = null;
         
-        // --- DISCOGS API & DIAGNOSTICS ---
+        // --- DISCOGS API ---
         if (match.link.toLowerCase().includes('discogs.com')) {
-            result.discogsData = { have:'--', want:'--', rating:'--', ratingsCount:'--', lastSold:'API Hidden', low:'--', median:'--', high:'--', debug: '' };
+            discogsData = { have:'--', want:'--', rating:'--', ratingsCount:'--', lastSold:'API Hidden', low:'--', median:'--', high:'--', debug: 'PROCESSING' };
             
             if (!discogsToken) {
-                result.discogsData.debug = "ERROR: Missing DISCOGS_TOKEN in Vercel Env Variables";
+                discogsData.debug = "ERROR: Missing DISCOGS_TOKEN in Vercel Env Variables";
             } else {
                 const idMatch = match.link.match(/\/(?:release|master|sell\/(?:release|item|history))\/(\d+)/i);
                 if (!idMatch) {
-                    result.discogsData.debug = "ERROR: Could not find Discogs ID in URL";
+                    discogsData.debug = "ERROR: Could not find Discogs ID in URL";
                 } else {
                     let id = idMatch[1];
                     try {
@@ -60,29 +63,28 @@ export async function POST(request) {
 
                         const relRes = await fetch(`https://api.discogs.com/releases/${id}`, { headers });
                         if (!relRes.ok) {
-                            result.discogsData.debug = `ERROR: Discogs API rejected Release (Status ${relRes.status})`;
+                            discogsData.debug = `ERROR: Discogs API rejected Release (Status ${relRes.status})`;
                         } else {
                             const rData = await relRes.json();
-                            result.discogsData.have = rData.community?.have ?? '--';
-                            result.discogsData.want = rData.community?.want ?? '--';
-                            result.discogsData.rating = rData.community?.rating?.average ?? '--';
-                            result.discogsData.ratingsCount = rData.community?.rating?.count ?? '--';
-                            result.discogsData.debug = "SUCCESS: Release Data Fetched";
+                            discogsData.have = rData.community?.have ?? '--';
+                            discogsData.want = rData.community?.want ?? '--';
+                            discogsData.rating = rData.community?.rating?.average ?? '--';
+                            discogsData.ratingsCount = rData.community?.rating?.count ?? '--';
+                            discogsData.debug = "SUCCESS";
                         }
 
                         const priceRes = await fetch(`https://api.discogs.com/marketplace/price_suggestions/${id}`, { headers });
                         if (!priceRes.ok) {
-                            result.discogsData.debug += ` | ERROR: Price API rejected (Status ${priceRes.status} - Missing Seller Profile?)`;
+                            discogsData.debug += ` | ERROR: Price API (Status ${priceRes.status})`;
                         } else {
                             const pData = await priceRes.json();
                             const fmt = v => v ? `$${v.toFixed(2)}` : '--';
-                            result.discogsData.low = fmt(pData["Good (G)"]?.value);
-                            result.discogsData.median = fmt(pData["Very Good Plus (VG+)"]?.value);
-                            result.discogsData.high = fmt(pData["Near Mint (NM or M-)"]?.value);
-                            result.discogsData.debug += " | SUCCESS: Pricing Fetched";
+                            discogsData.low = fmt(pData["Good (G)"]?.value);
+                            discogsData.median = fmt(pData["Very Good Plus (VG+)"]?.value);
+                            discogsData.high = fmt(pData["Near Mint (NM or M-)"]?.value);
                         }
                     } catch (e) {
-                        result.discogsData.debug = `ERROR: API Crash - ${e.message}`;
+                        discogsData.debug = `ERROR: API Crash - ${e.message}`;
                     }
                 }
             }
@@ -92,19 +94,25 @@ export async function POST(request) {
         if (match.link.toLowerCase().includes('ebay.com')) {
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 1500); // Fast 1.5s timeout
+                const timeoutId = setTimeout(() => controller.abort(), 1200); 
                 const res = await fetch(match.link, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: controller.signal });
                 clearTimeout(timeoutId);
                 const html = await res.text();
-                // Rips the exact bold price class from the eBay HTML
                 const priceMatch = html.match(/class="ux-textspans ux-textspans--BOLD"[^>]*>\s*(US\s*\$[\d,.]+)\s*<\/span>/i);
-                if (priceMatch) {
-                    result.ebayScrapedPrice = priceMatch[1];
-                }
+                if (priceMatch) ebayScrapedPrice = priceMatch[1];
             } catch(e) {}
         }
 
-        return result;
+        // Explicitly return every single key so Next.js cannot drop it
+        return { 
+            title: match.title || "Unknown", 
+            link: match.link || "#", 
+            thumbnail: match.thumbnail || "", 
+            price: match.price || null, 
+            source: match.source || "Unknown",
+            discogsData: discogsData,
+            ebayScrapedPrice: ebayScrapedPrice
+        };
     }));
 
     // 3. RUN EBAY SOLD USING CLEANED TEXT
