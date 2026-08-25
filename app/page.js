@@ -98,8 +98,8 @@ export default function Home() {
             {item.price && <span style={{ fontWeight: 'bold', color: 'green', marginRight: '10px' }}>{item.price.currency}{item.price.extracted_value}</span>}
             <span style={{ fontSize: '12px', color: 'gray' }}>Source: {item.source}</span>
             
-            {/* LIVE DISCOGS API GRID */}
-            {item.link.includes('discogs.com/release/') && item.discogsData && (
+                        {/* LIVE DISCOGS API GRID */}
+            {item.discogsData && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '12px', backgroundColor: '#fafafa', padding: '12px', borderRadius: '6px', marginTop: '10px', border: '1px solid #e0e0e0' }}>
                 <div><strong>Have:</strong> <span style={{color: '#0056b3'}}>{item.discogsData.have}</span></div>
                 <div><strong>Want:</strong> <span style={{color: '#d93025'}}>{item.discogsData.want}</span></div>
@@ -111,6 +111,7 @@ export default function Home() {
                 <div><strong>High (NM):</strong> {item.discogsData.high}</div>
               </div>
             )}
+
           </li>
         ))}
       </ul>
