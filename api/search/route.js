@@ -40,7 +40,9 @@ export async function POST(request) {
        return NextResponse.json({ error: "Google Lens Error: " + searchJson.error }, { status: 500 });
     }
 
-    const allowedSites = ["wikipedia.org", "target.com", "amazon.com"]; // Change these to your sites later
+   
+const allowedSites = ["discogs.com", "ebay.com", "popsike.com", "upcitemdb.com"];
+
     const visualMatches = searchJson.visual_matches || [];
     
     const curatedMatches = visualMatches.filter(match => {
