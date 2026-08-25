@@ -117,19 +117,30 @@ export default function Home() {
         </div>
       )}
 
-      <ul style={{ marginTop: '20px', padding: 0, listStyle: 'none' }}>
+           <ul style={{ marginTop: '20px', padding: 0, listStyle: 'none' }}>
         {results.map((item, i) => (
           <li key={i} style={{ marginBottom: '15px' }}>
             {item.thumbnail && (
               <img src={item.thumbnail} alt="match" width={80} style={{ verticalAlign: 'middle', marginRight: '10px' }} />
             )}
-            <a href={item.link} target="_blank" rel="noreferrer">
-              {item.title}
-            </a>
-            <p style={{ margin: 0, fontSize: '12px', color: 'gray' }}>Source: {item.source}</p>
+            <div style={{ display: 'inline-block', verticalAlign: 'middle', maxWidth: 'calc(100% - 100px)' }}>
+              <a href={item.link} target="_blank" rel="noreferrer" style={{ display: 'block', marginBottom: '5px' }}>
+                {item.title}
+              </a>
+              
+              {/* NEW: Displays the price in bold green if Google Lens found one */}
+              {item.price && (
+                <span style={{ fontWeight: 'bold', color: 'green', marginRight: '10px' }}>
+                  {item.price.currency}{item.price.extracted_value}
+                </span>
+              )}
+              
+              <span style={{ margin: 0, fontSize: '12px', color: 'gray' }}>Source: {item.source}</span>
+            </div>
           </li>
         ))}
       </ul>
+
       {results.length === 0 && !loading && !errorMsg && <p>No results found from your target sites.</p>}
     </main>
   );
