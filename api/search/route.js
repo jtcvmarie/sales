@@ -8,6 +8,7 @@ export async function POST(request) {
     if (!file) return NextResponse.json({ error: "No image received" }, { status: 400 });
     if (!process.env.SERPAPI_KEY) return NextResponse.json({ error: "Missing SERPAPI_KEY" }, { status: 500 });
 
+    // 1. Google Lens Image Upload & Search
     const uploadData = new FormData();
     uploadData.append('image', file);
     uploadData.append('api_key', process.env.SERPAPI_KEY);
@@ -23,99 +24,85 @@ export async function POST(request) {
     const allowedSites = ["discogs.com", "ebay.com", "popsike.com", "upcitemdb.com"];
     const matches = (searchJson.visual_matches || []).filter(match => allowedSites.some(s => match.link.toLowerCase().includes(s))).slice(0, 10);
 
+    // 2. IRONCLAD TEXT EXTRACTION (Guarantees eBay Sold runs)
     let textQuery = "";
     if (searchJson.knowledge_graph && searchJson.knowledge_graph.length > 0) {
       textQuery = searchJson.knowledge_graph[0].title;
-    } else if (searchJson.text_results && searchJson.text_results.length > 0) {
-      textQuery = searchJson.text_results.map(t => t.text).join(" ");
     } else if (matches.length > 0) {
-      textQuery = matches[0].title.replace(/eBay|Discogs|Popsike/ig, '').replace(/\|.*/, '').trim();
+      // If Lens fails to extract text, steal the title of the first match and clean it up
+      textQuery = matches[0].title.replace(/- eBay.*/i, '').replace(/- Discogs.*/i, '').replace(/\|.*/g, '').trim();
+    } else if (searchJson.text_results && searchJson.text_results.length > 0) {
+      textQuery = searchJson.text_results[0].text;
     }
 
-    // MAP OVER RESULTS AND ATTACH SCRAPED DATA EXPLICITLY
-    const finalMatches = await Promise.all(matches.map(async (match) => {
-      let discogsData = { have:'--', want:'--', rating:'--', ratingsCount:'--', lastSold:'--', low:'--', median:'--', high:'--' };
-      let ebayPrice = null;
+    // 3. FAST, PARALLEL API CALLS (No HTML Scraping allowed)
+    const fetchDiscogsStats = async (link) => {
+       let discogsData = { have:'--', want:'--', rating:'--', ratingsCount:'--', lastSold:'API Hidden', low:'--', median:'--', high:'--' };
+       if (!process.env.DISCOGS_TOKEN) return discogsData;
 
-      // 1. Discogs Scraper
-      if (match.link.toLowerCase().includes('discogs.com')) {
-        try {
-          // Attempt HTML Scrape First
-          const res = await fetch(match.link, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } });
-          const html = await res.text();
-          const flatHTML = html.replace(/\r?\n|\r/g, '').replace(/\s+/g, ' ');
-          const ex = (regex) => { const m = flatHTML.match(regex); return m ? m[1].replace(/<!--.*?-->/g, '').replace(/<[^>]+>/g, '').trim() : null; };
-          
-          const haveMatch = ex(/Have(?:<!-- -->)?:\s*<\/span>\s*<a[^>]*>([\d,]+)<\/a>/i);
-          
-          if (haveMatch) {
-             discogsData = {
-               have: haveMatch,
-               want: ex(/Want(?:<!-- -->)?:\s*<\/span>\s*<a[^>]*>([\d,]+)<\/a>/i) || '--',
-               rating: ex(/Avg Rating(?:<!-- -->)?:\s*<\/span>\s*<span>(.*?)<\/span>/i) || '--',
-               ratingsCount: ex(/Ratings(?:<!-- -->)?:\s*<\/span>\s*<a[^>]*>([\d,]+)<\/a>/i) || '--',
-               lastSold: ex(/Last Sold(?:<!-- -->)?:\s*<\/span>\s*<a[^>]*>.*?<time[^>]*>([^<]+)<\/time>/i) || ex(/Last Sold(?:<!-- -->)?:\s*<\/span>\s*<span>([^<]+)<\/span>/i) || '--',
-               low: ex(/Low(?:<!-- -->)?:\s*<\/span>\s*<span>([^<]+)<\/span>/i) || '--',
-               median: ex(/Median(?:<!-- -->)?:\s*<\/span>\s*<span>([^<]+)<\/span>/i) || '--',
-               high: ex(/High(?:<!-- -->)?:\s*<\/span>\s*<span>([^<]+)<\/span>/i) || '--'
-             };
-          } else if (process.env.DISCOGS_TOKEN) {
-             // Fallback to API if blocked
-             const mRel = match.link.match(/\/(?:release|sell\/release)\/(\d+)/);
-             if (mRel) {
-                const h = { 'User-Agent': 'RecordLens/1.0', 'Authorization': `Discogs token=${process.env.DISCOGS_TOKEN}` };
-                const [relRes, priceRes] = await Promise.all([
-                   fetch(`https://api.discogs.com/releases/${mRel[1]}`, {headers: h}).then(r=>r.json()).catch(()=>({})),
-                   fetch(`https://api.discogs.com/marketplace/price_suggestions/${mRel[1]}`, {headers: h}).then(r=>r.json()).catch(()=>({}))
-                ]);
-                discogsData.have = relRes.community?.have ?? '--';
-                discogsData.want = relRes.community?.want ?? '--';
-                discogsData.rating = relRes.community?.rating?.average ?? '--';
-                discogsData.ratingsCount = relRes.community?.rating?.count ?? '--';
-                discogsData.lastSold = "API Hidden";
-                discogsData.low = priceRes["Good (G)"]?.value ? `$${priceRes["Good (G)"].value.toFixed(2)}` : '--';
-                discogsData.median = priceRes["Very Good Plus (VG+)"]?.value ? `$${priceRes["Very Good Plus (VG+)"].value.toFixed(2)}` : '--';
-                discogsData.high = priceRes["Near Mint (NM or M-)"]?.value ? `$${priceRes["Near Mint (NM or M-)"].value.toFixed(2)}` : '--';
+       try {
+          let releaseId = null;
+          // Grabs ID whether it is a normal release, a sell page, or a master page
+          const mRel = link.match(/\/(?:release|sell\/release|sell\/item)\/(\d+)/);
+          const mMast = link.match(/\/master\/(\d+)/);
+          const headers = { 'User-Agent': 'RecordLens/1.0', 'Authorization': `Discogs token=${process.env.DISCOGS_TOKEN}` };
+
+          if (mRel) {
+              releaseId = mRel[1];
+          } else if (mMast) {
+              const mastRes = await fetch(`https://api.discogs.com/masters/${mMast[1]}`, { headers });
+              if(mastRes.ok) {
+                  const mastJson = await mastRes.json();
+                  releaseId = mastJson.main_release;
+              }
+          }
+
+          if (releaseId) {
+             const [relRes, priceRes] = await Promise.all([
+                fetch(`https://api.discogs.com/releases/${releaseId}`, {headers}),
+                fetch(`https://api.discogs.com/marketplace/price_suggestions/${releaseId}`, {headers})
+             ]);
+             
+             if (relRes.ok) {
+                const relJson = await relRes.json();
+                discogsData.have = relJson.community?.have ?? '--';
+                discogsData.want = relJson.community?.want ?? '--';
+                discogsData.rating = relJson.community?.rating?.average ?? '--';
+                discogsData.ratingsCount = relJson.community?.rating?.count ?? '--';
+             }
+             if (priceRes.ok) {
+                const priceJson = await priceRes.json();
+                const fmt = (val) => val ? `$${val.toFixed(2)}` : '--';
+                discogsData.low = fmt(priceJson["Good (G)"]?.value);
+                discogsData.median = fmt(priceJson["Very Good Plus (VG+)"]?.value);
+                discogsData.high = fmt(priceJson["Near Mint (NM or M-)"]?.value);
              }
           }
-        } catch (e) { console.error("Discogs Scrape Error", e); }
-      }
+       } catch(e) { console.error("Discogs API error"); }
+       return discogsData;
+    };
 
-      // 2. eBay Scraper
-      if (match.link.toLowerCase().includes('ebay.com')) {
-         try {
-            const res = await fetch(match.link, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-            const html = await res.text();
-            // Target the exact class you provided
-            const priceMatch = html.match(/class="ux-textspans ux-textspans--BOLD"[^>]*>\s*(US\s*\$[\d,.]+)\s*<\/span>/i);
-            if (priceMatch) {
-               ebayPrice = priceMatch[1];
-            }
-         } catch(e) { console.error("eBay Scrape Error", e); }
+    // Process Discogs active matches
+    const finalMatchesPromise = Promise.all(matches.map(async (match) => {
+      let finalMatch = { title: match.title, link: match.link, thumbnail: match.thumbnail, price: match.price, source: match.source };
+      if (match.link.toLowerCase().includes('discogs.com')) {
+          finalMatch.discogsData = await fetchDiscogsStats(match.link);
       }
-
-      // Create a brand new object to guarantee Next.js sends the data to your phone
-      return {
-         title: match.title,
-         link: match.link,
-         thumbnail: match.thumbnail,
-         price: match.price, // original Lens price
-         source: match.source,
-         discogsData: discogsData,
-         ebayPrice: ebayPrice
-      };
+      return finalMatch;
     }));
 
-    // FETCH EBAY SOLD
-    let ebaySoldResults = [];
-    if (textQuery) {
-      try {
-        const ebayUrl = `https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(textQuery)}&LH_Sold=1&LH_Complete=1&api_key=${process.env.SERPAPI_KEY}`;
-        const ebayRes = await fetch(ebayUrl);
-        const ebayJson = await ebayRes.json();
-        ebaySoldResults = (ebayJson.organic_results || []).slice(0, 10);
-      } catch(e) { console.error("eBay Sold Error", e); }
-    }
+    // Fetch eBay Sold items via SerpApi eBay Engine
+    const fetchEbaySoldPromise = (async () => {
+       if (!textQuery) return [];
+       try {
+          const res = await fetch(`https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(textQuery)}&LH_Sold=1&LH_Complete=1&api_key=${process.env.SERPAPI_KEY}`);
+          const json = await res.json();
+          return (json.organic_results || []).slice(0, 10);
+       } catch(e) { return []; }
+    })();
+
+    // Await both processing tasks at the exact same time for maximum speed
+    const [finalMatches, ebaySoldResults] = await Promise.all([finalMatchesPromise, fetchEbaySoldPromise]);
 
     return NextResponse.json({ results: finalMatches, ebaySold: ebaySoldResults, textQuery });
     
