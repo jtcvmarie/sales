@@ -9,7 +9,7 @@ export default function Home() {
   const [errorMsg, setErrorMsg] = useState("");
   const [copySuccess, setCopySuccess] = useState(false);
 
-  const shrinkImage = (file) => { /* ... keeps your existing canvas compression ... */
+  const shrinkImage = (file) => {
     return new Promise((resolve) => {
       const reader = new FileReader();
       reader.onload = (event) => {
@@ -54,14 +54,11 @@ export default function Home() {
     }
   };
 
-  // --- STATS CALCULATOR ---
   const calculateStats = (items, platform) => {
     let prices = [];
-    if (platform === 'lens') {
-      prices = items.map(i => i.price?.extracted_value).filter(p => p != null);
-    } else if (platform === 'ebay-sold') {
-      prices = items.map(i => i.price?.extracted).filter(p => p != null);
-    }
+    if (platform === 'lens') prices = items.map(i => i.price?.extracted_value).filter(p => p != null);
+    else if (platform === 'ebay-sold') prices = items.map(i => i.price?.extracted).filter(p => p != null);
+    
     if (prices.length === 0) return null;
     const total = prices.reduce((a, b) => a + b, 0);
     return { avg: (total / prices.length).toFixed(2), low: Math.min(...prices).toFixed(2), high: Math.max(...prices).toFixed(2), count: prices.length };
@@ -77,13 +74,12 @@ export default function Home() {
       
       <input type="file" accept="image/*" capture="environment" onChange={handleCapture} style={{ padding: '10px', fontSize: '16px', marginBottom: '15px', width: '100%' }} />
       
-      {loading && <p>Scanning web and fetching comps...</p>}
+      {loading && <p>Scanning web, fetching comps, and pulling API stats...</p>}
       {errorMsg && <p style={{ color: 'red' }}>{errorMsg}</p>}
       
-      {/* TEXT EXTRACTOR */}
       {textQuery && !loading && (
         <div style={{ padding: '15px', backgroundColor: '#f0f0f0', borderRadius: '8px', marginBottom: '20px' }}>
-          <p style={{ margin: '0 0 5px 0', fontSize: '12px', color: 'gray' }}>Detected Text:</p>
+          <p style={{ margin: '0 0 5px 0', fontSize: '12px', color: 'gray' }}>Detected Text / Barcode:</p>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <strong style={{ fontSize: '16px' }}>{textQuery}</strong>
             <button onClick={() => { navigator.clipboard.writeText(textQuery); setCopySuccess(true); setTimeout(() => setCopySuccess(false), 2000); }}
@@ -94,7 +90,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* 1. ACTIVE LENS MATCHES */}
       {results.length > 0 && <h3>Active Marketplace Matches</h3>}
       <ul style={{ padding: 0, listStyle: 'none' }}>
         {results.map((item, i) => (
@@ -103,24 +98,23 @@ export default function Home() {
             {item.price && <span style={{ fontWeight: 'bold', color: 'green', marginRight: '10px' }}>{item.price.currency}{item.price.extracted_value}</span>}
             <span style={{ fontSize: '12px', color: 'gray' }}>Source: {item.source}</span>
             
-            {/* THE DISCOGS 4x2 GRID PLACEHOLDER */}
-            {item.link.includes('discogs.com') && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px', fontSize: '11px', backgroundColor: '#fafafa', padding: '10px', borderRadius: '4px', marginTop: '10px', border: '1px solid #ddd' }}>
-                <div><strong>Have:</strong> (Need API)</div>
-                <div><strong>Want:</strong> (Need API)</div>
-                <div><strong>Avg Rating:</strong> --</div>
-                <div><strong>Ratings:</strong> --</div>
-                <div><strong>Last Sold:</strong> --</div>
-                <div><strong>Low:</strong> --</div>
-                <div><strong>Median:</strong> --</div>
-                <div><strong>High:</strong> --</div>
+            {/* LIVE DISCOGS API GRID */}
+            {item.link.includes('discogs.com/release/') && item.discogsData && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '12px', backgroundColor: '#fafafa', padding: '12px', borderRadius: '6px', marginTop: '10px', border: '1px solid #e0e0e0' }}>
+                <div><strong>Have:</strong> <span style={{color: '#0056b3'}}>{item.discogsData.have}</span></div>
+                <div><strong>Want:</strong> <span style={{color: '#d93025'}}>{item.discogsData.want}</span></div>
+                <div><strong>Avg Rating:</strong> {item.discogsData.rating} / 5</div>
+                <div><strong>Ratings:</strong> {item.discogsData.ratingsCount}</div>
+                <div><strong>Last Sold:</strong> <span style={{color: 'gray'}}>{item.discogsData.lastSold}</span></div>
+                <div><strong>Low (G):</strong> {item.discogsData.low}</div>
+                <div><strong>Median (VG+):</strong> {item.discogsData.median}</div>
+                <div><strong>High (NM):</strong> {item.discogsData.high}</div>
               </div>
             )}
           </li>
         ))}
       </ul>
 
-      {/* 2. EBAY SOLD LISTINGS */}
       {ebaySold.length > 0 && (
         <>
           <h3 style={{ color: '#8b0000', marginTop: '30px' }}>eBay Sold Comps</h3>
@@ -137,7 +131,6 @@ export default function Home() {
         </>
       )}
 
-      {/* 3. MARKET SUMMARY INSIGHTS */}
       {(activeDiscogsStats || activeEbayStats || soldEbayStats) && (
         <div style={{ marginTop: '40px', padding: '15px', backgroundColor: '#eef2ff', borderRadius: '8px', border: '1px solid #c7d2fe' }}>
           <h3 style={{ margin: '0 0 15px 0', fontSize: '16px' }}>Pricing Summary</h3>
