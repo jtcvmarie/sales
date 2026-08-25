@@ -48,10 +48,12 @@ export default function Home() {
   const ebayActive = results.filter(r => r.link.includes('ebay.com'));
   
   const calculateEstTotal = (app) => {
-    const vals = [app.discogs.val, app.ebayActive.val, app.ebaySold.val, app.popsike.val].filter(v => v !== null);
+    const vals = [app.discogs?.val, app.ebayActive?.val, app.ebaySold?.val].filter(v => v !== null && v !== undefined);
     if (vals.length === 0) return '---';
     return (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2);
   };
+
+  const ebaySoldDirectUrl = textQuery ? `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(textQuery)}&_sacat=0&_from=R40&rt=nc&LH_Sold=1` : '#';
 
   return (
     <main style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto', backgroundColor: '#fff' }}>
@@ -62,7 +64,6 @@ export default function Home() {
       {loading && <p style={{ fontWeight: 'bold', color: '#0070f3' }}>Scanning artwork & pulling 6-sample averages...</p>}
       {errorMsg && <p style={{ color: 'red' }}>{errorMsg}</p>}
       
-      {/* 1. TEXT EXTRACTOR */}
       {textQuery && !loading && (
         <div style={{ padding: '15px', backgroundColor: '#f0f0f0', borderRadius: '8px', marginBottom: '20px' }}>
           <p style={{ margin: '0 0 5px 0', fontSize: '12px', color: 'gray' }}>Google Lens Detected Text / Barcode:</p>
@@ -76,7 +77,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 2. TAMPERMONKEY APPRAISAL OVERLAY UI */}
+      {/* APPRAISAL UI */}
       {appraisal && (
         <div style={{ border: '1px solid #ccc', borderRadius: '8px', overflow: 'hidden', marginBottom: '30px', boxShadow: '0 4px 14px rgba(0,0,0,0.1)' }}>
           <div style={{ background: '#2a2a2a', color: '#fff', padding: '10px 15px', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between' }}>
@@ -84,20 +85,16 @@ export default function Home() {
           </div>
           <div style={{ padding: '15px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', fontSize: '15px' }}>
-              <a href={appraisal.discogs.link} target="_blank" style={{ color: '#007bff', textDecoration: 'none', fontWeight: 'bold' }}>Discogs</a>
-              <strong>{appraisal.discogs.val ? `$${appraisal.discogs.val.toFixed(2)}` : '---'}</strong>
+              <a href={textQuery ? `https://www.discogs.com/search?q=${encodeURIComponent(textQuery)}&type=all` : '#'} target="_blank" style={{ color: '#007bff', textDecoration: 'none', fontWeight: 'bold' }}>Discogs</a>
+              <strong>{appraisal.discogs?.val ? `$${appraisal.discogs.val.toFixed(2)}` : '---'}</strong>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', fontSize: '15px' }}>
-              <a href={appraisal.ebayActive.link} target="_blank" style={{ color: '#007bff', textDecoration: 'none', fontWeight: 'bold' }}>eBay Active</a>
-              <strong>{appraisal.ebayActive.val ? `$${appraisal.ebayActive.val.toFixed(2)}` : '---'}</strong>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', fontSize: '15px' }}>
-              <a href={appraisal.ebaySold.link} target="_blank" style={{ color: '#007bff', textDecoration: 'none', fontWeight: 'bold' }}>eBay Sold</a>
-              <strong>{appraisal.ebaySold.val ? `$${appraisal.ebaySold.val.toFixed(2)}` : '---'}</strong>
+              <a href={textQuery ? `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(textQuery)}&_sacat=0&_from=R40` : '#'} target="_blank" style={{ color: '#007bff', textDecoration: 'none', fontWeight: 'bold' }}>eBay Active</a>
+              <strong>{appraisal.ebayActive?.val ? `$${appraisal.ebayActive.val.toFixed(2)}` : '---'}</strong>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px', fontSize: '15px' }}>
-              <a href={appraisal.popsike.link} target="_blank" style={{ color: '#007bff', textDecoration: 'none', fontWeight: 'bold' }}>Popsike</a>
-              <strong>{appraisal.popsike.val ? `$${appraisal.popsike.val.toFixed(2)}` : '---'}</strong>
+              <a href={ebaySoldDirectUrl} target="_blank" style={{ color: '#007bff', textDecoration: 'none', fontWeight: 'bold' }}>eBay Sold</a>
+              <strong>{appraisal.ebaySold?.val ? `$${appraisal.ebaySold.val.toFixed(2)}` : '---'}</strong>
             </div>
             <div style={{ borderTop: '1px solid #eee', paddingTop: '12px', textAlign: 'center', fontWeight: 'bold', fontSize: '18px' }}>
               EST. Total Value: <span style={{ color: '#28a745' }}>${calculateEstTotal(appraisal)}</span>
@@ -106,7 +103,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 3. DISCOGS ACTIVE SECTION */}
+      {/* DISCOGS ACTIVE SECTION */}
       {discogsActive.length > 0 && (
         <div style={{ marginBottom: '40px' }}>
           <h3 style={{ backgroundColor: '#333', color: 'white', padding: '10px 15px', borderRadius: '4px', margin: '0 0 15px 0' }}>Discogs Matches</h3>
@@ -120,13 +117,14 @@ export default function Home() {
                 </div>
               </div>
               
-              {item.discogsData && item.link.includes('discogs.com') && (
+              {/* DISCOGS 4x2 GRID */}
+              {item.discogsData && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '13px', backgroundColor: '#fafafa', padding: '12px', borderRadius: '6px', marginTop: '15px', border: '1px solid #e0e0e0' }}>
                   <div><span style={{color: 'gray'}}>Have:</span> <strong>{item.discogsData.have}</strong></div>
                   <div><span style={{color: 'gray'}}>Want:</span> <strong>{item.discogsData.want}</strong></div>
                   <div><span style={{color: 'gray'}}>Avg Rating:</span> <strong>{item.discogsData.rating}</strong></div>
                   <div><span style={{color: 'gray'}}>Ratings:</span> <strong>{item.discogsData.ratingsCount}</strong></div>
-                  <div><span style={{color: 'gray'}}>Last Sold:</span> <strong>{item.discogsData.lastSold}</strong></div>
+                  <div><span style={{color: 'gray'}}>Last Sold:</span> <strong style={{color: '#8b0000'}}>{item.discogsData.lastSold}</strong></div>
                   <div><span style={{color: 'gray'}}>Low:</span> <strong>{item.discogsData.low}</strong></div>
                   <div><span style={{color: 'gray'}}>Median:</span> <strong>{item.discogsData.median}</strong></div>
                   <div><span style={{color: 'gray'}}>High:</span> <strong>{item.discogsData.high}</strong></div>
@@ -137,38 +135,47 @@ export default function Home() {
         </div>
       )}
 
-      {/* 4. EBAY ACTIVE SECTION */}
+      {/* EBAY ACTIVE SECTION */}
       {ebayActive.length > 0 && (
         <div style={{ marginBottom: '40px' }}>
           <h3 style={{ backgroundColor: '#0064d2', color: 'white', padding: '10px 15px', borderRadius: '4px', margin: '0 0 15px 0' }}>eBay Active Matches</h3>
-          {ebayActive.map((item, i) => (
-            <div key={i} style={{ marginBottom: '15px', borderBottom: '1px solid #eee', paddingBottom: '15px' }}>
-              <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
-                {item.thumbnail ? <img src={item.thumbnail} alt="match" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '4px', flexShrink: 0 }} /> : <div style={{ width: '80px', height: '80px', backgroundColor: '#eee', borderRadius: '4px', flexShrink: 0 }} />}
-                <div style={{ flex: 1 }}>
-                  <a href={item.link} target="_blank" rel="noreferrer" style={{ display: 'block', fontWeight: 'bold', fontSize: '14px', marginBottom: '5px' }}>{item.title}</a>
-                  <div style={{ fontWeight: 'bold', color: 'green', fontSize: '16px', marginBottom: '3px' }}>
-                    {item.price ? `${item.price.currency}${item.price.extracted_value}` : "Click to view price"}
+          {ebayActive.map((item, i) => {
+             // Fallback logic for eBay price display
+             let displayPrice = '--';
+             if (item.ebayPrice) displayPrice = item.ebayPrice;
+             else if (item.price) displayPrice = `${item.price.currency}${item.price.extracted_value}`;
+             
+             return (
+              <div key={i} style={{ marginBottom: '15px', borderBottom: '1px solid #eee', paddingBottom: '15px' }}>
+                <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
+                  {item.thumbnail ? <img src={item.thumbnail} alt="match" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '4px', flexShrink: 0 }} /> : <div style={{ width: '80px', height: '80px', backgroundColor: '#eee', borderRadius: '4px', flexShrink: 0 }} />}
+                  <div style={{ flex: 1 }}>
+                    <a href={item.link} target="_blank" rel="noreferrer" style={{ display: 'block', fontWeight: 'bold', fontSize: '14px', marginBottom: '5px' }}>{item.title}</a>
+                    
+                    <div style={{ fontWeight: 'bold', color: 'green', fontSize: '16px', marginBottom: '3px' }}>
+                      {displayPrice} {item.ebayShipping && <span style={{fontSize: '12px', color: 'gray', fontWeight: 'normal'}}>+ {item.ebayShipping}</span>}
+                    </div>
+                    
+                    <div style={{ fontSize: '12px', color: 'gray' }}>Source: eBay</div>
                   </div>
-                  <div style={{ fontSize: '12px', color: 'gray' }}>Source: eBay</div>
                 </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
-      {/* 5. EBAY SOLD SECTION */}
+      {/* EBAY SOLD SECTION */}
       {(ebaySold.length > 0 || textQuery) && (
         <div style={{ marginBottom: '40px', borderTop: '4px solid #8b0000', paddingTop: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
             <h3 style={{ margin: 0, color: '#8b0000' }}>eBay Sold History</h3>
-            <a href={appraisal?.ebaySold.link} target="_blank" rel="noreferrer" style={{ fontSize: '13px', color: '#0064d2', textDecoration: 'none', fontWeight: 'bold', border: '1px solid #0064d2', padding: '5px 10px', borderRadius: '4px' }}>
+            <a href={ebaySoldDirectUrl} target="_blank" rel="noreferrer" style={{ fontSize: '13px', color: '#0064d2', textDecoration: 'none', fontWeight: 'bold', border: '1px solid #0064d2', padding: '5px 10px', borderRadius: '4px' }}>
               View All Sold →
             </a>
           </div>
           
-          {ebaySold.length === 0 && <p style={{ fontSize: '14px', color: 'gray' }}>No recent sold history found.</p>}
+          {ebaySold.length === 0 && <p style={{ fontSize: '14px', color: 'gray' }}>No recent sold history found for this scan.</p>}
           
           {ebaySold.map((item, i) => (
             <div key={i} style={{ marginBottom: '12px', padding: '12px', backgroundColor: '#fff5f5', borderRadius: '6px', border: '1px solid #fcdcdc' }}>
