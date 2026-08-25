@@ -24,69 +24,61 @@ export async function POST(request) {
     const visualMatches = searchJson.visual_matches || [];
     const curatedMatches = visualMatches.filter(match => allowedSites.some(site => match.link.toLowerCase().includes(site)));
 
-    // --- AGGRESSIVE DISCOGS EXTRACTOR ---
+    // --- HTML CLEANER HELPERS ---
+    const cleanHTML = (str) => {
+       if (!str) return '--';
+       return str.replace(/<!--.*?-->/g, '').replace(/<[^>]+>/g, '').trim();
+    };
+    const getStat = (html, statName) => {
+       let parts = html.split(`>${statName}<!-- -->:</span>`);
+       if (parts.length < 2) parts = html.split(`>${statName}:</span>`);
+       if (parts.length < 2) return '--';
+       return cleanHTML(parts[1].split('</li>')[0]);
+    };
+
+    // --- AGGRESSIVE SCRAPER ---
     const finalMatches = await Promise.all(curatedMatches.map(async (match) => {
-      // Default grid so it ALWAYS shows up, even if the fetch fails
-      let discogsData = { have: '--', want: '--', rating: '--', ratingsCount: '--', lastSold: '--', low: '--', median: '--', high: '--' };
       
+      // 1. DISCOGS SCRAPER
       if (match.link.toLowerCase().includes('discogs.com')) {
         try {
-          // Attempt 1: Scrape the actual HTML for true historical data
-          const res = await fetch(match.link, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' } });
+          const res = await fetch(match.link, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } });
           const html = await res.text();
           
-          const extract = (regex) => { const m = html.match(regex); return m ? m[1] : null; };
-          
-          const htmlHave = extract(/Have(?:<!-- -->)?:.*?<a[^>]*>([\d,]+)<\/a>/);
-          const htmlWant = extract(/Want(?:<!-- -->)?:.*?<a[^>]*>([\d,]+)<\/a>/);
-          const htmlRating = extract(/Avg Rating(?:<!-- -->)?:.*?<span>([\d.]+\s*\/\s*5)/);
-          const htmlRatingsCount = extract(/Ratings(?:<!-- -->)?:.*?<a[^>]*>([\d,]+)<\/a>/);
-          const htmlLastSold = extract(/Last Sold(?:<!-- -->)?:.*?<time[^>]*>([^<]+)<\/time>/) || extract(/Last Sold(?:<!-- -->)?:.*?<a[^>]*>([^<]+)<\/a>/);
-          const htmlLow = extract(/Low(?:<!-- -->)?:.*?<span>([^<]+)<\/span>/);
-          const htmlMedian = extract(/Median(?:<!-- -->)?:.*?<span>([^<]+)<\/span>/);
-          const htmlHigh = extract(/High(?:<!-- -->)?:.*?<span>([^<]+)<\/span>/);
-
-          if (htmlHave || htmlMedian) {
-             discogsData = {
-                have: htmlHave || '--', want: htmlWant || '--', rating: htmlRating || '--', ratingsCount: htmlRatingsCount || '--',
-                lastSold: htmlLastSold || '--', low: htmlLow || '--', median: htmlMedian || '--', high: htmlHigh || '--'
-             };
-          } else if (process.env.DISCOGS_TOKEN) {
-             // Attempt 2: Fallback to the Discogs API if scraping was blocked
-             let releaseId = null;
-             const mRel = match.link.match(/\/(?:release|sell\/release)\/(\d+)/);
-             const mMast = match.link.match(/\/master\/(\d+)/);
-             
-             if (mRel) releaseId = mRel[1];
-             else if (mMast) {
-                const masterRes = await fetch(`https://api.discogs.com/masters/${mMast[1]}`, { headers: { 'Authorization': `Discogs token=${process.env.DISCOGS_TOKEN}` } });
-                const masterJson = await masterRes.json();
-                releaseId = masterJson.main_release;
-             }
-             if (releaseId) {
-                const headers = { 'Authorization': `Discogs token=${process.env.DISCOGS_TOKEN}` };
-                const releaseRes = await fetch(`https://api.discogs.com/releases/${releaseId}`, { headers });
-                const releaseJson = await releaseRes.json();
-                const priceRes = await fetch(`https://api.discogs.com/marketplace/price_suggestions/${releaseId}`, { headers });
-                const priceJson = await priceRes.json();
-                const fmt = (obj) => obj?.value ? `$${obj.value.toFixed(2)}` : '--';
-                
-                discogsData = {
-                  have: releaseJson.community?.have || '--', want: releaseJson.community?.want || '--',
-                  rating: releaseJson.community?.rating?.average ? `${releaseJson.community.rating.average} / 5` : '--',
-                  ratingsCount: releaseJson.community?.rating?.count || '--',
-                  lastSold: "API Restricted", low: fmt(priceJson["Good (G)"]), median: fmt(priceJson["Very Good Plus (VG+)"]), high: fmt(priceJson["Near Mint (NM or M-)"])
-                };
-             }
-          }
+          match.discogsData = {
+            have: getStat(html, 'Have'),
+            want: getStat(html, 'Want'),
+            rating: getStat(html, 'Avg Rating'),
+            ratingsCount: getStat(html, 'Ratings'),
+            lastSold: getStat(html, 'Last Sold'),
+            low: getStat(html, 'Low'),
+            median: getStat(html, 'Median'),
+            high: getStat(html, 'High')
+          };
         } catch (e) { console.error("Discogs Error", e); }
-      } else {
-        discogsData = null; // Don't attach to eBay links
-      }
+      } 
       
-      return { ...match, discogsData };
+      // 2. EBAY SCRAPER
+      if (match.link.toLowerCase().includes('ebay.com')) {
+        try {
+          const ebayRes = await fetch(match.link, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } });
+          const ebayHtml = await ebayRes.text();
+          
+          // Uses your exact provided HTML classes to force price extraction
+          const priceMatch = ebayHtml.match(/<span class="ux-textspans ux-textspans--BOLD">([^<]*\$[0-9,.]+[^<]*)<\/span>/);
+          const strikeMatch = ebayHtml.match(/<span class="ux-textspans ux-textspans--STRIKETHROUGH">([^<]*\$[0-9,.]+[^<]*)<\/span>/);
+          const shipMatch = ebayHtml.match(/<span class="ux-textspans ux-textspans--BOLD">([^<]*shipping[^<]*)<\/span>/i);
+
+          match.ebayPrice = priceMatch ? priceMatch[1] : (match.price ? `${match.price.currency}${match.price.extracted_value}` : '--');
+          match.ebayStrike = strikeMatch ? strikeMatch[1] : null;
+          match.ebayShipping = shipMatch ? shipMatch[1] : null;
+        } catch(e) {}
+      }
+
+      return match;
     }));
 
+    // --- TEXT EXTRACTION & EBAY SOLD COMP FETCH ---
     let textQuery = "";
     if (searchJson.knowledge_graph && searchJson.knowledge_graph.length > 0) textQuery = searchJson.knowledge_graph[0].title;
     else if (searchJson.text_results && searchJson.text_results.length > 0) textQuery = searchJson.text_results.map(t => t.text).join(" ");
