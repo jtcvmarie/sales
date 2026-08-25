@@ -24,65 +24,73 @@ export async function POST(request) {
     const visualMatches = searchJson.visual_matches || [];
     const curatedMatches = visualMatches.filter(match => allowedSites.some(site => match.link.toLowerCase().includes(site)));
 
-    // 2. The Discogs API Interceptor (Upgraded for Master URLs and Header Auth)
+    // --- AGGRESSIVE DISCOGS EXTRACTOR ---
     const finalMatches = await Promise.all(curatedMatches.map(async (match) => {
-      let discogsData = null;
+      // Default grid so it ALWAYS shows up, even if the fetch fails
+      let discogsData = { have: '--', want: '--', rating: '--', ratingsCount: '--', lastSold: '--', low: '--', median: '--', high: '--' };
       
-      if (match.link.toLowerCase().includes('discogs.com') && process.env.DISCOGS_TOKEN) {
+      if (match.link.toLowerCase().includes('discogs.com')) {
         try {
-          let releaseId = null;
-          // Grabs the ID whether it is a /release/ or a /master/
-          const matchRelease = match.link.match(/\/(?:release|sell\/release)\/(\d+)/);
-          const matchMaster = match.link.match(/\/master\/(\d+)/);
+          // Attempt 1: Scrape the actual HTML for true historical data
+          const res = await fetch(match.link, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' } });
+          const html = await res.text();
           
-          // Securely passes your token via Headers
-          const headers = { 
-            'User-Agent': 'RecordLens/1.0',
-            'Authorization': `Discogs token=${process.env.DISCOGS_TOKEN}`
-          };
-
-          if (matchRelease) {
-            releaseId = matchRelease[1];
-          } else if (matchMaster) {
-            // If it's a master, fetch it to find the main_release ID
-            const masterRes = await fetch(`https://api.discogs.com/masters/${matchMaster[1]}`, { headers });
-            const masterJson = await masterRes.json();
-            releaseId = masterJson.main_release;
-          }
+          const extract = (regex) => { const m = html.match(regex); return m ? m[1] : null; };
           
-          if (releaseId) {
-            const releaseRes = await fetch(`https://api.discogs.com/releases/${releaseId}`, { headers });
-            const releaseJson = await releaseRes.json();
-            
-            const priceRes = await fetch(`https://api.discogs.com/marketplace/price_suggestions/${releaseId}`, { headers });
-            const priceJson = await priceRes.json();
-            
-            const formatPrice = (obj) => obj?.value ? `$${obj.value.toFixed(2)}` : '--';
+          const htmlHave = extract(/Have(?:<!-- -->)?:.*?<a[^>]*>([\d,]+)<\/a>/);
+          const htmlWant = extract(/Want(?:<!-- -->)?:.*?<a[^>]*>([\d,]+)<\/a>/);
+          const htmlRating = extract(/Avg Rating(?:<!-- -->)?:.*?<span>([\d.]+\s*\/\s*5)/);
+          const htmlRatingsCount = extract(/Ratings(?:<!-- -->)?:.*?<a[^>]*>([\d,]+)<\/a>/);
+          const htmlLastSold = extract(/Last Sold(?:<!-- -->)?:.*?<time[^>]*>([^<]+)<\/time>/) || extract(/Last Sold(?:<!-- -->)?:.*?<a[^>]*>([^<]+)<\/a>/);
+          const htmlLow = extract(/Low(?:<!-- -->)?:.*?<span>([^<]+)<\/span>/);
+          const htmlMedian = extract(/Median(?:<!-- -->)?:.*?<span>([^<]+)<\/span>/);
+          const htmlHigh = extract(/High(?:<!-- -->)?:.*?<span>([^<]+)<\/span>/);
 
-            discogsData = {
-              have: releaseJson.community?.have || 0,
-              want: releaseJson.community?.want || 0,
-              rating: releaseJson.community?.rating?.average || '--',
-              ratingsCount: releaseJson.community?.rating?.count || 0,
-              lastSold: "API Restricted", 
-              low: formatPrice(priceJson["Good (G)"]),
-              median: formatPrice(priceJson["Very Good Plus (VG+)"]),
-              high: formatPrice(priceJson["Near Mint (NM or M-)"])
-            };
+          if (htmlHave || htmlMedian) {
+             discogsData = {
+                have: htmlHave || '--', want: htmlWant || '--', rating: htmlRating || '--', ratingsCount: htmlRatingsCount || '--',
+                lastSold: htmlLastSold || '--', low: htmlLow || '--', median: htmlMedian || '--', high: htmlHigh || '--'
+             };
+          } else if (process.env.DISCOGS_TOKEN) {
+             // Attempt 2: Fallback to the Discogs API if scraping was blocked
+             let releaseId = null;
+             const mRel = match.link.match(/\/(?:release|sell\/release)\/(\d+)/);
+             const mMast = match.link.match(/\/master\/(\d+)/);
+             
+             if (mRel) releaseId = mRel[1];
+             else if (mMast) {
+                const masterRes = await fetch(`https://api.discogs.com/masters/${mMast[1]}`, { headers: { 'Authorization': `Discogs token=${process.env.DISCOGS_TOKEN}` } });
+                const masterJson = await masterRes.json();
+                releaseId = masterJson.main_release;
+             }
+             if (releaseId) {
+                const headers = { 'Authorization': `Discogs token=${process.env.DISCOGS_TOKEN}` };
+                const releaseRes = await fetch(`https://api.discogs.com/releases/${releaseId}`, { headers });
+                const releaseJson = await releaseRes.json();
+                const priceRes = await fetch(`https://api.discogs.com/marketplace/price_suggestions/${releaseId}`, { headers });
+                const priceJson = await priceRes.json();
+                const fmt = (obj) => obj?.value ? `$${obj.value.toFixed(2)}` : '--';
+                
+                discogsData = {
+                  have: releaseJson.community?.have || '--', want: releaseJson.community?.want || '--',
+                  rating: releaseJson.community?.rating?.average ? `${releaseJson.community.rating.average} / 5` : '--',
+                  ratingsCount: releaseJson.community?.rating?.count || '--',
+                  lastSold: "API Restricted", low: fmt(priceJson["Good (G)"]), median: fmt(priceJson["Very Good Plus (VG+)"]), high: fmt(priceJson["Near Mint (NM or M-)"])
+                };
+             }
           }
-        } catch (e) { console.error("Discogs Fetch Error", e); }
+        } catch (e) { console.error("Discogs Error", e); }
+      } else {
+        discogsData = null; // Don't attach to eBay links
       }
+      
       return { ...match, discogsData };
     }));
 
     let textQuery = "";
-    if (searchJson.knowledge_graph && searchJson.knowledge_graph.length > 0) {
-      textQuery = searchJson.knowledge_graph[0].title;
-    } else if (searchJson.text_results && searchJson.text_results.length > 0) {
-      textQuery = searchJson.text_results.map(t => t.text).join(" ");
-    } else if (searchJson.knowledge_graph && searchJson.knowledge_graph.title) {
-      textQuery = searchJson.knowledge_graph.title;
-    }
+    if (searchJson.knowledge_graph && searchJson.knowledge_graph.length > 0) textQuery = searchJson.knowledge_graph[0].title;
+    else if (searchJson.text_results && searchJson.text_results.length > 0) textQuery = searchJson.text_results.map(t => t.text).join(" ");
+    else if (searchJson.knowledge_graph && searchJson.knowledge_graph.title) textQuery = searchJson.knowledge_graph.title;
 
     let ebaySoldResults = [];
     if (textQuery) {
