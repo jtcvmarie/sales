@@ -42,11 +42,7 @@ export default function Home() {
       formData.append('image', smallFile);
       
       const res = await fetch('/api/search', { method: 'POST', body: formData });
-      
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(`Server returned status ${res.status}: ${errText.slice(0, 100)}`);
-      }
+      if (!res.ok) throw new Error(`Server returned status ${res.status}`);
       
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -68,17 +64,17 @@ export default function Home() {
 
   return (
     <main style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto', backgroundColor: '#fff' }}>
-      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V21</h2>
+      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V22</h2>
       
       <input type="file" accept="image/*" capture="environment" onChange={handleCapture} style={{ padding: '10px', fontSize: '16px', marginBottom: '15px', width: '100%', backgroundColor: '#f9f9f9', border: '1px solid #ccc', borderRadius: '5px' }} />
       
-      {loading && <p style={{ fontWeight: 'bold', color: '#0070f3' }}>Scanning artwork & querying secure APIs...</p>}
+      {loading && <p style={{ fontWeight: 'bold', color: '#0070f3' }}>Scanning artwork & forcing API backups...</p>}
       {errorMsg && <p style={{ color: 'red', fontWeight: 'bold', backgroundColor: '#fee', padding: '10px', borderRadius: '4px' }}>{errorMsg}</p>}
       
       {/* 1. EXTRACTED SEARCH QUERY */}
       {hasSearched && (
         <div style={{ padding: '15px', backgroundColor: '#f0f0f0', borderRadius: '8px', marginBottom: '20px' }}>
-          <p style={{ margin: '0 0 5px 0', fontSize: '12px', color: 'gray' }}>eBay Sold Search Query:</p>
+          <p style={{ margin: '0 0 5px 0', fontSize: '12px', color: 'gray' }}>Guaranteed Search Query:</p>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <strong style={{ fontSize: '16px', color: '#0056b3' }}>{textQuery}</strong>
           </div>
@@ -92,7 +88,7 @@ export default function Home() {
           
           {discogs.length === 0 ? (
             <div style={{ padding: '15px', backgroundColor: '#fafafa', border: '1px solid #ddd', borderRadius: '6px' }}>
-               <p style={{ margin: 0, fontSize: '14px', color: '#555' }}>Google Lens did not find any Discogs links for this specific image.</p>
+               <p style={{ margin: 0, fontSize: '14px', color: '#555' }}>No Discogs links found.</p>
             </div>
           ) : (
             discogs.map((item, i) => {
@@ -110,7 +106,7 @@ export default function Home() {
                       <a href={item.link} target="_blank" rel="noreferrer" style={{ display: 'block', fontWeight: 'bold', fontSize: '15px', marginBottom: '5px' }}>
                         {item.title}
                       </a>
-                      <div style={{ fontSize: '12px', color: 'gray' }}>Source: Discogs</div>
+                      <div style={{ fontSize: '12px', color: 'gray' }}>Source: Discogs API</div>
                     </div>
                   </div>
                   
@@ -122,12 +118,12 @@ export default function Home() {
                     <div><span style={{ color: 'gray' }}>Ratings:</span> <strong>{dData.ratingsCount}</strong></div>
                     <div><span style={{ color: 'gray' }}>Last Sold:</span> <strong style={{ color: '#8b0000' }}>{dData.lastSold}</strong></div>
                     <div><span style={{ color: 'gray' }}>Low:</span> <strong>{dData.low}</strong></div>
-                    <div><span style={{ color: 'gray' }}>Median:</span> <strong>{dData.median}</strong></div>
+                    <div><span style={{ color: 'gray' }}>Median:</span> <strong style={{ color: String(dData.median).includes('Error') ? 'red' : 'black' }}>{dData.median}</strong></div>
                     <div><span style={{ color: 'gray' }}>High:</span> <strong>{dData.high}</strong></div>
                   </div>
                   
-                  {/* DIAGNOSTIC */}
-                  {dData.debug && dData.debug !== "SUCCESS" && (
+                  {/* DIAGNOSTIC ERROR OUTPUT */}
+                  {dData.debug && dData.debug !== "API OK" && (
                     <div style={{ color: '#d93025', fontSize: '11px', marginTop: '10px', fontWeight: 'bold', padding: '8px', backgroundColor: '#ffe6e6', borderRadius: '4px' }}>
                       Status: {dData.debug}
                     </div>
@@ -146,7 +142,7 @@ export default function Home() {
           
           {ebayActive.length === 0 ? (
             <div style={{ padding: '15px', backgroundColor: '#fafafa', border: '1px solid #ddd', borderRadius: '6px' }}>
-               <p style={{ margin: 0, fontSize: '14px', color: '#555' }}>Google Lens did not find any active eBay links for this image.</p>
+               <p style={{ margin: 0, fontSize: '14px', color: '#555' }}>No active eBay links found.</p>
             </div>
           ) : (
             ebayActive.map((item, i) => (
@@ -171,8 +167,6 @@ export default function Home() {
                         View on eBay
                       </div>
                     )}
-
-                    <div style={{ fontSize: '12px', color: 'gray' }}>Source: eBay Lens Match</div>
                   </div>
                 </div>
               </div>
