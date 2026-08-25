@@ -6,7 +6,7 @@ export async function POST(request) {
     const file = formData.get('image'); 
     
     if (!file) return NextResponse.json({ error: "No image received" }, { status: 400 });
-    if (!process.env.SERPAPI_KEY) return NextResponse.json({ error: "Missing SERPAPI_KEY environment variable" }, { status: 500 });
+    if (!process.env.SERPAPI_KEY) return NextResponse.json({ error: "Missing SERPAPI_KEY" }, { status: 500 });
 
     const serpapiKey = process.env.SERPAPI_KEY;
     const discogsToken = process.env.DISCOGS_TOKEN;
@@ -25,104 +25,121 @@ export async function POST(request) {
     const searchJson = await searchRes.json();
     if (searchJson.error) return NextResponse.json({ error: "Google Lens Error: " + searchJson.error }, { status: 500 });
 
-    const visualMatches = searchJson.visual_matches || [];
-
-    // 3. RAW 6-WORD STRING EXTRACTION (NO WORD DELETION)
-    let rawTitle = searchJson.knowledge_graph?.[0]?.title || visualMatches[0]?.title || searchJson.text_results?.[0]?.text || "Vinyl Record";
-    
-    // Just split by common separators to drop the site name (e.g., "Hank Williams - eBay" -> "Hank Williams")
-    let beforeDash = rawTitle.split(/[-|—–]/)[0].trim();
-    if (!beforeDash) beforeDash = rawTitle; // Fallback just in case
-
-    // Remove punctuation and take exactly the first 6 words
-    let textQuery = beforeDash.replace(/[^a-zA-Z0-9\s]/g, '').trim().split(/\s+/).slice(0, 6).join(' ');
-    if (!textQuery || textQuery.trim() === "") textQuery = "Vinyl Record";
-
-    // 4. DISCOGS STATS EXTRACTION
-    const discogsLinks = visualMatches.filter(m => m.link && m.link.toLowerCase().includes('discogs.com')).slice(0, 5);
-    const discogsMatches = await Promise.all(discogsLinks.map(async (match) => {
-      let discogsData = { have: '--', want: '--', rating: '--', ratingsCount: '--', lastSold: 'API Hidden', low: '--', median: '--', high: '--', debug: '' };
-      
-      if (!discogsToken) {
-        discogsData.debug = "FAILED: No DISCOGS_TOKEN found in Vercel settings.";
-        return { title: match.title, link: match.link, thumbnail: match.thumbnail, discogsData };
-      }
-
-      const idMatch = match.link.match(/\/(?:release|master|sell\/(?:release|item|history))\/(\d+)/i);
-      if (!idMatch) {
-        discogsData.debug = "FAILED: Could not extract Discogs ID from URL.";
-        return { title: match.title, link: match.link, thumbnail: match.thumbnail, discogsData };
-      }
-
-      let releaseId = idMatch[1];
-      const headers = { 'User-Agent': 'RecordLens/1.0', 'Authorization': `Discogs token=${discogsToken}` };
-
-      try {
-        if (match.link.includes('/master/')) {
-          const mRes = await fetch(`https://api.discogs.com/masters/${releaseId}`, { headers });
-          if (!mRes.ok) throw new Error(`Master API rejected (Status ${mRes.status})`);
-          const mJson = await mRes.json();
-          releaseId = mJson.main_release;
+    // 3. UNBREAKABLE TEXT EXTRACTION
+    let textQuery = "Vinyl Record";
+    try {
+        let rawTitle = searchJson.knowledge_graph?.[0]?.title || searchJson.visual_matches?.[0]?.title || searchJson.text_results?.[0]?.text;
+        if (rawTitle) {
+            // Just swap hyphens and pipes for spaces, then take the first 5 words. No aggressive deleting.
+            let cleaned = rawTitle.replace(/[-|]/g, ' ').replace(/[^a-zA-Z0-9\s]/g, '').trim();
+            let words = cleaned.split(/\s+/).filter(w => w.length > 0);
+            if (words.length > 0) {
+                textQuery = words.slice(0, 5).join(' ');
+            }
         }
+    } catch(e) {
+        textQuery = "Vinyl Record";
+    }
 
-        const [relRes, priceRes] = await Promise.all([
-          fetch(`https://api.discogs.com/releases/${releaseId}`, { headers }),
-          fetch(`https://api.discogs.com/marketplace/price_suggestions/${releaseId}`, { headers })
-        ]);
-
-        if (!relRes.ok) throw new Error(`Release API rejected (Status ${relRes.status})`);
-        const rData = await relRes.json();
-        discogsData.have = rData.community?.have ?? '--';
-        discogsData.want = rData.community?.want ?? '--';
-        discogsData.rating = rData.community?.rating?.average ?? '--';
-        discogsData.ratingsCount = rData.community?.rating?.count ?? '--';
-
-        if (!priceRes.ok) throw new Error(`Price API rejected (Status ${priceRes.status}) - Is your Discogs Seller Profile complete?`);
-        const pData = await priceRes.json();
-        const fmt = v => (v ? `$${v.toFixed(2)}` : '--');
-        discogsData.low = fmt(pData["Good (G)"]?.value);
-        discogsData.median = fmt(pData["Very Good Plus (VG+)"]?.value);
-        discogsData.high = fmt(pData["Near Mint (NM or M-)"]?.value);
+    // 4. EXPLICITLY SEPARATE MATCHES
+    let discogsMatches = [];
+    let ebayActiveMatches = [];
+    
+    const visualMatches = searchJson.visual_matches || [];
+    for (let i = 0; i < visualMatches.length; i++) {
+        let match = visualMatches[i];
+        if (!match.link) continue;
         
-        discogsData.debug = "SUCCESS";
-      } catch (err) {
-        discogsData.debug = `FAILED: ${err.message}`;
-      }
+        let linkStr = match.link.toLowerCase();
+        if (linkStr.includes('discogs.com') && discogsMatches.length < 5) {
+            discogsMatches.push({ title: match.title, link: match.link, thumbnail: match.thumbnail });
+        }
+        if (linkStr.includes('ebay.com') && ebayActiveMatches.length < 6) {
+            ebayActiveMatches.push({ 
+                title: match.title, 
+                link: match.link, 
+                thumbnail: match.thumbnail, 
+                price: match.price?.raw || (match.price?.extracted_value ? `$${match.price.extracted_value}` : null) 
+            });
+        }
+    }
 
-      return { title: match.title, link: match.link, thumbnail: match.thumbnail, discogsData };
-    }));
+    // 5. FETCH DISCOGS STATS SAFELY
+    for (let i = 0; i < discogsMatches.length; i++) {
+        let dMatch = discogsMatches[i];
+        dMatch.discogsData = { have:'--', want:'--', rating:'--', ratingsCount:'--', lastSold:'API Hidden', low:'--', median:'--', high:'--', debug: 'PENDING' };
+        
+        try {
+            if (!discogsToken) {
+                dMatch.discogsData.debug = "NO DISCOGS TOKEN SAVED";
+                continue;
+            }
 
-    // 5. EBAY ACTIVE MATCHES
-    const ebayActiveMatches = visualMatches.filter(m => m.link && m.link.toLowerCase().includes('ebay.com')).slice(0, 6).map(match => ({
-      title: match.title || "eBay Listing",
-      link: match.link || "#",
-      thumbnail: match.thumbnail || "",
-      price: match.price?.raw || (match.price?.extracted_value ? `$${match.price.extracted_value}` : null)
-    }));
+            let idMatch = dMatch.link.match(/\/(?:release|master|sell\/(?:release|item|history))\/(\d+)/i);
+            if (!idMatch) {
+                dMatch.discogsData.debug = "NO ID IN URL";
+                continue;
+            }
 
-    // 6. EBAY SOLD FETCH
+            let id = idMatch[1];
+            let headers = { 'User-Agent': 'RecordLens/1.0', 'Authorization': `Discogs token=${discogsToken}` };
+            
+            if (dMatch.link.includes('/master/')) {
+                let mRes = await fetch(`https://api.discogs.com/masters/${id}`, { headers });
+                if (mRes.ok) {
+                    let mJson = await mRes.json();
+                    id = mJson.main_release;
+                }
+            }
+
+            let [relRes, priceRes] = await Promise.all([
+                fetch(`https://api.discogs.com/releases/${id}`, { headers }),
+                fetch(`https://api.discogs.com/marketplace/price_suggestions/${id}`, { headers })
+            ]);
+
+            if (relRes.ok) {
+                let rData = await relRes.json();
+                dMatch.discogsData.have = rData.community?.have ?? '--';
+                dMatch.discogsData.want = rData.community?.want ?? '--';
+                dMatch.discogsData.rating = rData.community?.rating?.average ?? '--';
+                dMatch.discogsData.ratingsCount = rData.community?.rating?.count ?? '--';
+            }
+
+            if (priceRes.ok) {
+                let pData = await priceRes.json();
+                const fmt = v => v ? `$${v.toFixed(2)}` : '--';
+                dMatch.discogsData.low = fmt(pData["Good (G)"]?.value);
+                dMatch.discogsData.median = fmt(pData["Very Good Plus (VG+)"]?.value);
+                dMatch.discogsData.high = fmt(pData["Near Mint (NM or M-)"]?.value);
+                dMatch.discogsData.debug = "SUCCESS";
+            } else {
+                dMatch.discogsData.debug = `Price Error ${priceRes.status}`;
+            }
+        } catch(e) {
+            dMatch.discogsData.debug = `Crash: ${e.message}`;
+        }
+    }
+
+    // 6. FETCH EBAY SOLD
     let ebaySoldResults = [];
     try {
-      const soldUrl = `https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(textQuery)}&LH_Sold=1&LH_Complete=1&api_key=${serpapiKey}`;
-      const soldRes = await fetch(soldUrl);
-      const soldJson = await soldRes.json();
-      if (soldJson.organic_results) {
-        ebaySoldResults = soldJson.organic_results.slice(0, 10).map(item => ({
-          title: item.title,
-          link: item.link,
-          price: item.price?.raw || null,
-          condition: item.condition || ""
-        }));
-      }
-    } catch (e) {
-      console.error("eBay Sold API Failed:", e);
+        let soldUrl = `https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(textQuery)}&LH_Sold=1&LH_Complete=1&api_key=${serpapiKey}`;
+        let soldRes = await fetch(soldUrl);
+        let soldJson = await soldRes.json();
+        if (soldJson.organic_results) {
+            ebaySoldResults = soldJson.organic_results.slice(0, 10).map(item => ({
+                title: item.title, link: item.link, price: item.price?.raw || null, condition: item.condition || ""
+            }));
+        }
+    } catch(e) {
+        console.error("eBay Sold Error");
     }
 
     return NextResponse.json({
-      discogsMatches,
-      ebayActiveMatches,
-      ebaySoldResults,
-      textQuery
+        discogsMatches,
+        ebayActiveMatches,
+        ebaySoldResults,
+        textQuery
     });
     
   } catch (error) {
