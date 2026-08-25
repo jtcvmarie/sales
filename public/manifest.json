@@ -1,0 +1,15 @@
+{
+  "name": "Record Lens",
+  "short_name": "RecLens",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "https://upload.wikimedia.org/wikipedia/commons/4/4e/Record_Player_Icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
