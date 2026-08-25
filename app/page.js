@@ -87,7 +87,7 @@ export default function Home() {
 
   return (
     <main style={{ padding: '20px', fontFamily: 'sans-serif' }}>
-      <h1>My Lens Search</h1>
+      <h1>My Lens Search V2</h1>
       
       <input 
         type="file" 
