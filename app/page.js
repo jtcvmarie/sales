@@ -2,7 +2,8 @@
 import { useState } from 'react';
 
 export default function Home() {
-  const [results, setResults] = useState([]);
+  const [discogs, setDiscogs] = useState([]);
+  const [ebayActive, setEbayActive] = useState([]);
   const [ebaySold, setEbaySold] = useState([]);
   const [textQuery, setTextQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -26,7 +27,7 @@ export default function Home() {
   const handleCapture = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    setLoading(true); setErrorMsg(""); setResults([]); setEbaySold([]); setTextQuery("");
+    setLoading(true); setErrorMsg(""); setDiscogs([]); setEbayActive([]); setEbaySold([]); setTextQuery("");
     
     try {
       const smallFile = await shrinkImage(file);
@@ -36,7 +37,8 @@ export default function Home() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       
-      setResults(data.results || []);
+      setDiscogs(data.discogs || []);
+      setEbayActive(data.ebayActive || []);
       setEbaySold(data.ebaySold || []);
       setTextQuery(data.textQuery || "");
     } catch (error) { 
@@ -46,25 +48,21 @@ export default function Home() {
     }
   };
 
-  const discogsActive = results.filter(r => r.link.includes('discogs.com'));
-  const ebayActive = results.filter(r => r.link.includes('ebay.com'));
-  const otherActive = results.filter(r => !r.link.includes('discogs.com') && !r.link.includes('ebay.com'));
-
   const ebaySoldDirectUrl = textQuery ? `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(textQuery)}&_sacat=0&_from=R40&rt=nc&LH_Sold=1` : '#';
 
   return (
     <main style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto', backgroundColor: '#fff' }}>
-      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V8</h2>
+      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V9</h2>
       
       <input type="file" accept="image/*" capture="environment" onChange={handleCapture} style={{ padding: '10px', fontSize: '16px', marginBottom: '15px', width: '100%', backgroundColor: '#f9f9f9', border: '1px solid #ccc', borderRadius: '5px' }} />
       
-      {loading && <p style={{ fontWeight: 'bold', color: '#0070f3' }}>Scanning artwork & querying secure APIs...</p>}
+      {loading && <p style={{ fontWeight: 'bold', color: '#0070f3' }}>Scanning artwork & running dedicated API searches...</p>}
       {errorMsg && <p style={{ color: 'red', fontWeight: 'bold' }}>{errorMsg}</p>}
       
-      {/* 1. TEXT EXTRACTOR (Cleaned) */}
+      {/* 1. CLEANED TEXT (Used for eBay Searches) */}
       {textQuery && !loading && (
         <div style={{ padding: '15px', backgroundColor: '#f0f0f0', borderRadius: '8px', marginBottom: '20px' }}>
-          <p style={{ margin: '0 0 5px 0', fontSize: '12px', color: 'gray' }}>Cleaned Search Query (Used for eBay Sold):</p>
+          <p style={{ margin: '0 0 5px 0', fontSize: '12px', color: 'gray' }}>Direct eBay Search Query:</p>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <strong style={{ fontSize: '16px' }}>{textQuery}</strong>
             <button onClick={() => { navigator.clipboard.writeText(textQuery); setCopySuccess(true); setTimeout(() => setCopySuccess(false), 2000); }}
@@ -75,11 +73,11 @@ export default function Home() {
         </div>
       )}
 
-      {/* 2. DISCOGS ACTIVE SECTION */}
-      {discogsActive.length > 0 && (
+      {/* 2. DISCOGS SECTION */}
+      {discogs.length > 0 && (
         <div style={{ marginBottom: '40px' }}>
           <h3 style={{ backgroundColor: '#333', color: 'white', padding: '10px 15px', borderRadius: '4px', margin: '0 0 15px 0' }}>Discogs Matches</h3>
-          {discogsActive.map((item, i) => (
+          {discogs.map((item, i) => (
             <div key={i} style={{ marginBottom: '20px', borderBottom: '2px solid #eee', paddingBottom: '20px' }}>
               <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
                 {item.thumbnail ? <img src={item.thumbnail} alt="match" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '4px', flexShrink: 0 }} /> : <div style={{ width: '80px', height: '80px', backgroundColor: '#eee', borderRadius: '4px', flexShrink: 0 }} />}
@@ -89,49 +87,51 @@ export default function Home() {
                 </div>
               </div>
               
-              {/* DISCOGS GRID */}
+              {/* DISCOGS 4x2 GRID */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '13px', backgroundColor: '#fafafa', padding: '12px', borderRadius: '6px', marginTop: '15px', border: '1px solid #e0e0e0' }}>
-                <div><span style={{color: 'gray'}}>Have:</span> <strong style={{color: '#0056b3'}}>{item.discogsData?.have || '--'}</strong></div>
-                <div><span style={{color: 'gray'}}>Want:</span> <strong style={{color: '#d93025'}}>{item.discogsData?.want || '--'}</strong></div>
-                <div><span style={{color: 'gray'}}>Avg Rating:</span> <strong>{item.discogsData?.rating || '--'}</strong></div>
-                <div><span style={{color: 'gray'}}>Ratings:</span> <strong>{item.discogsData?.ratingsCount || '--'}</strong></div>
-                <div><span style={{color: 'gray'}}>Last Sold:</span> <strong style={{color: '#8b0000'}}>{item.discogsData?.lastSold || '--'}</strong></div>
-                <div><span style={{color: 'gray'}}>Low:</span> <strong>{item.discogsData?.low || '--'}</strong></div>
-                <div><span style={{color: 'gray'}}>Median:</span> <strong style={{color: item.discogsData?.median?.includes('Error') ? 'red' : 'black'}}>{item.discogsData?.median || '--'}</strong></div>
-                <div><span style={{color: 'gray'}}>High:</span> <strong>{item.discogsData?.high || '--'}</strong></div>
+                <div><span style={{color: 'gray'}}>Have:</span> <strong>{item.discogsData?.have}</strong></div>
+                <div><span style={{color: 'gray'}}>Want:</span> <strong>{item.discogsData?.want}</strong></div>
+                <div><span style={{color: 'gray'}}>Avg Rating:</span> <strong>{item.discogsData?.rating}</strong></div>
+                <div><span style={{color: 'gray'}}>Ratings:</span> <strong>{item.discogsData?.ratingsCount}</strong></div>
+                <div><span style={{color: 'gray'}}>Last Sold:</span> <strong style={{color: '#8b0000'}}>{item.discogsData?.lastSold}</strong></div>
+                <div><span style={{color: 'gray'}}>Low:</span> <strong>{item.discogsData?.low}</strong></div>
+                <div><span style={{color: 'gray'}}>Median:</span> <strong>{item.discogsData?.median}</strong></div>
+                <div><span style={{color: 'gray'}}>High:</span> <strong>{item.discogsData?.high}</strong></div>
+              </div>
+              
+              {/* DIAGNOSTIC SCANNER: Exposes API errors */}
+              {item.discogsData?.debug && (
+                 <div style={{ color: '#d93025', fontSize: '11px', marginTop: '8px', fontWeight: 'bold' }}>
+                    API DIAGNOSTIC: {item.discogsData.debug}
+                 </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 3. EBAY ACTIVE SECTION (Powered by Direct Search) */}
+      {ebayActive.length > 0 && (
+        <div style={{ marginBottom: '40px' }}>
+          <h3 style={{ backgroundColor: '#0064d2', color: 'white', padding: '10px 15px', borderRadius: '4px', margin: '0 0 15px 0' }}>eBay Active</h3>
+          {ebayActive.map((item, i) => (
+            <div key={i} style={{ marginBottom: '15px', borderBottom: '1px solid #eee', paddingBottom: '15px' }}>
+              <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
+                {item.thumbnail ? <img src={item.thumbnail} alt="match" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '4px', flexShrink: 0 }} /> : <div style={{ width: '80px', height: '80px', backgroundColor: '#eee', borderRadius: '4px', flexShrink: 0 }} />}
+                <div style={{ flex: 1 }}>
+                  <a href={item.link} target="_blank" rel="noreferrer" style={{ display: 'block', fontWeight: 'bold', fontSize: '14px', marginBottom: '5px' }}>{item.title}</a>
+                  <div style={{ fontWeight: 'bold', color: 'green', fontSize: '16px', marginBottom: '3px' }}>
+                    {item.price?.raw || 'N/A'}
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'gray' }}>Source: eBay Direct</div>
+                </div>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* 3. EBAY ACTIVE SECTION */}
-      {ebayActive.length > 0 && (
-        <div style={{ marginBottom: '40px' }}>
-          <h3 style={{ backgroundColor: '#0064d2', color: 'white', padding: '10px 15px', borderRadius: '4px', margin: '0 0 15px 0' }}>eBay Active Matches</h3>
-          {ebayActive.map((item, i) => {
-            // Uses only the Google Lens returned price
-            let displayPrice = item.price?.raw || (item.price?.extracted_value ? `$${item.price.extracted_value}` : "View Listing");
-
-            return (
-              <div key={i} style={{ marginBottom: '15px', borderBottom: '1px solid #eee', paddingBottom: '15px' }}>
-                <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
-                  {item.thumbnail ? <img src={item.thumbnail} alt="match" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '4px', flexShrink: 0 }} /> : <div style={{ width: '80px', height: '80px', backgroundColor: '#eee', borderRadius: '4px', flexShrink: 0 }} />}
-                  <div style={{ flex: 1 }}>
-                    <a href={item.link} target="_blank" rel="noreferrer" style={{ display: 'block', fontWeight: 'bold', fontSize: '14px', marginBottom: '5px' }}>{item.title}</a>
-                    <div style={{ fontWeight: 'bold', color: 'green', fontSize: '16px', marginBottom: '3px' }}>
-                      {displayPrice}
-                    </div>
-                    <div style={{ fontSize: '12px', color: 'gray' }}>Source: eBay</div>
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {/* 4. EBAY SOLD SECTION */}
+      {/* 4. EBAY SOLD SECTION (Powered by Direct Search) */}
       {(ebaySold.length > 0 || textQuery) && (
         <div style={{ marginBottom: '40px', borderTop: '4px solid #8b0000', paddingTop: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
@@ -141,7 +141,7 @@ export default function Home() {
             </a>
           </div>
           
-          {ebaySold.length === 0 && <p style={{ fontSize: '14px', color: 'gray' }}>No recent sold history found for "{textQuery}". Click "View All Sold" to adjust search.</p>}
+          {ebaySold.length === 0 && <p style={{ fontSize: '14px', color: 'gray' }}>No recent sold history found for "{textQuery}".</p>}
           
           {ebaySold.map((item, i) => (
             <div key={i} style={{ marginBottom: '12px', padding: '12px', backgroundColor: '#fff5f5', borderRadius: '6px', border: '1px solid #fcdcdc' }}>
