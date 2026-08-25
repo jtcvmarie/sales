@@ -11,7 +11,7 @@ export async function POST(request) {
     const serpapiKey = process.env.SERPAPI_KEY;
     const discogsToken = process.env.DISCOGS_TOKEN;
 
-    // 1. Upload Image to SerpApi
+    // 1. Upload to SerpApi
     const uploadData = new FormData();
     uploadData.append('image', file);
     uploadData.append('api_key', serpapiKey);
@@ -27,30 +27,30 @@ export async function POST(request) {
 
     const visualMatches = searchJson.visual_matches || [];
 
-    // 3. Clean Text Extraction (Hyphen-safe)
+    // 3. RAW 6-WORD STRING EXTRACTION (NO WORD DELETION)
     let rawTitle = searchJson.knowledge_graph?.[0]?.title || visualMatches[0]?.title || searchJson.text_results?.[0]?.text || "Vinyl Record";
-    let cleanQuery = String(rawTitle)
-      .replace(/eBay|Discogs|Popsike|Vinyl|LP|CD|Record|Album/ig, '')
-      .replace(/[-|—]/g, ' ')
-      .replace(/[^a-zA-Z0-9\s]/g, ' ')
-      .trim();
+    
+    // Just split by common separators to drop the site name (e.g., "Hank Williams - eBay" -> "Hank Williams")
+    let beforeDash = rawTitle.split(/[-|—–]/)[0].trim();
+    if (!beforeDash) beforeDash = rawTitle; // Fallback just in case
 
-    let textQuery = cleanQuery.split(/\s+/).filter(w => w.length > 0).slice(0, 5).join(' ');
-    if (!textQuery || textQuery.length < 2) textQuery = "Vinyl Record";
+    // Remove punctuation and take exactly the first 6 words
+    let textQuery = beforeDash.replace(/[^a-zA-Z0-9\s]/g, '').trim().split(/\s+/).slice(0, 6).join(' ');
+    if (!textQuery || textQuery.trim() === "") textQuery = "Vinyl Record";
 
-    // 4. Process Discogs Matches
+    // 4. DISCOGS STATS EXTRACTION
     const discogsLinks = visualMatches.filter(m => m.link && m.link.toLowerCase().includes('discogs.com')).slice(0, 5);
     const discogsMatches = await Promise.all(discogsLinks.map(async (match) => {
-      let discogsData = { have: '--', want: '--', rating: '--', ratingsCount: '--', lastSold: 'API Hidden', low: '--', median: '--', high: '--', debug: 'PENDING' };
+      let discogsData = { have: '--', want: '--', rating: '--', ratingsCount: '--', lastSold: 'API Hidden', low: '--', median: '--', high: '--', debug: '' };
       
       if (!discogsToken) {
-        discogsData.debug = "MISSING_DISCOGS_TOKEN";
+        discogsData.debug = "FAILED: No DISCOGS_TOKEN found in Vercel settings.";
         return { title: match.title, link: match.link, thumbnail: match.thumbnail, discogsData };
       }
 
       const idMatch = match.link.match(/\/(?:release|master|sell\/(?:release|item|history))\/(\d+)/i);
       if (!idMatch) {
-        discogsData.debug = "NO_ID_IN_URL";
+        discogsData.debug = "FAILED: Could not extract Discogs ID from URL.";
         return { title: match.title, link: match.link, thumbnail: match.thumbnail, discogsData };
       }
 
@@ -60,10 +60,9 @@ export async function POST(request) {
       try {
         if (match.link.includes('/master/')) {
           const mRes = await fetch(`https://api.discogs.com/masters/${releaseId}`, { headers });
-          if (mRes.ok) {
-            const mJson = await mRes.json();
-            releaseId = mJson.main_release;
-          }
+          if (!mRes.ok) throw new Error(`Master API rejected (Status ${mRes.status})`);
+          const mJson = await mRes.json();
+          releaseId = mJson.main_release;
         }
 
         const [relRes, priceRes] = await Promise.all([
@@ -71,32 +70,29 @@ export async function POST(request) {
           fetch(`https://api.discogs.com/marketplace/price_suggestions/${releaseId}`, { headers })
         ]);
 
-        if (relRes.ok) {
-          const rData = await relRes.json();
-          discogsData.have = rData.community?.have ?? '--';
-          discogsData.want = rData.community?.want ?? '--';
-          discogsData.rating = rData.community?.rating?.average ?? '--';
-          discogsData.ratingsCount = rData.community?.rating?.count ?? '--';
-        }
+        if (!relRes.ok) throw new Error(`Release API rejected (Status ${relRes.status})`);
+        const rData = await relRes.json();
+        discogsData.have = rData.community?.have ?? '--';
+        discogsData.want = rData.community?.want ?? '--';
+        discogsData.rating = rData.community?.rating?.average ?? '--';
+        discogsData.ratingsCount = rData.community?.rating?.count ?? '--';
 
-        if (priceRes.ok) {
-          const pData = await priceRes.json();
-          const fmt = v => (v ? `$${v.toFixed(2)}` : '--');
-          discogsData.low = fmt(pData["Good (G)"]?.value);
-          discogsData.median = fmt(pData["Very Good Plus (VG+)"]?.value);
-          discogsData.high = fmt(pData["Near Mint (NM or M-)"]?.value);
-          discogsData.debug = "SUCCESS";
-        } else {
-          discogsData.debug = `Price Error (${priceRes.status})`;
-        }
+        if (!priceRes.ok) throw new Error(`Price API rejected (Status ${priceRes.status}) - Is your Discogs Seller Profile complete?`);
+        const pData = await priceRes.json();
+        const fmt = v => (v ? `$${v.toFixed(2)}` : '--');
+        discogsData.low = fmt(pData["Good (G)"]?.value);
+        discogsData.median = fmt(pData["Very Good Plus (VG+)"]?.value);
+        discogsData.high = fmt(pData["Near Mint (NM or M-)"]?.value);
+        
+        discogsData.debug = "SUCCESS";
       } catch (err) {
-        discogsData.debug = `API Crash: ${err.message}`;
+        discogsData.debug = `FAILED: ${err.message}`;
       }
 
       return { title: match.title, link: match.link, thumbnail: match.thumbnail, discogsData };
     }));
 
-    // 5. Process eBay Active Matches
+    // 5. EBAY ACTIVE MATCHES
     const ebayActiveMatches = visualMatches.filter(m => m.link && m.link.toLowerCase().includes('ebay.com')).slice(0, 6).map(match => ({
       title: match.title || "eBay Listing",
       link: match.link || "#",
@@ -104,22 +100,22 @@ export async function POST(request) {
       price: match.price?.raw || (match.price?.extracted_value ? `$${match.price.extracted_value}` : null)
     }));
 
-    // 6. Fetch eBay Sold
+    // 6. EBAY SOLD FETCH
     let ebaySoldResults = [];
-    if (textQuery) {
-      try {
-        const soldUrl = `https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(textQuery)}&LH_Sold=1&LH_Complete=1&api_key=${serpapiKey}`;
-        const soldRes = await fetch(soldUrl);
-        const soldJson = await soldRes.json();
-        if (soldJson.organic_results) {
-          ebaySoldResults = soldJson.organic_results.slice(0, 10).map(item => ({
-            title: item.title,
-            link: item.link,
-            price: item.price?.raw || null,
-            condition: item.condition || ""
-          }));
-        }
-      } catch (e) {}
+    try {
+      const soldUrl = `https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(textQuery)}&LH_Sold=1&LH_Complete=1&api_key=${serpapiKey}`;
+      const soldRes = await fetch(soldUrl);
+      const soldJson = await soldRes.json();
+      if (soldJson.organic_results) {
+        ebaySoldResults = soldJson.organic_results.slice(0, 10).map(item => ({
+          title: item.title,
+          link: item.link,
+          price: item.price?.raw || null,
+          condition: item.condition || ""
+        }));
+      }
+    } catch (e) {
+      console.error("eBay Sold API Failed:", e);
     }
 
     return NextResponse.json({
