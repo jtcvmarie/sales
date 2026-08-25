@@ -20,27 +20,32 @@ export async function POST(request) {
     const searchJson = await searchRes.json();
     if (searchJson.error) return NextResponse.json({ error: "Google Lens Error: " + searchJson.error }, { status: 500 });
 
-    // 1. SMART TEXT EXTRACTION
-    let rawText = searchJson.knowledge_graph?.[0]?.title || searchJson.text_results?.map(t => t.text).join(" ") || "";
-    if (!rawText && searchJson.visual_matches?.length > 0) {
-       rawText = searchJson.visual_matches[0].title;
+    // CRASH PROTECTOR: Safely fallback all text paths to guarantee strings
+    let rawText = searchJson.knowledge_graph?.[0]?.title || "";
+    if (!rawText) rawText = searchJson.text_results?.map(t => t?.text || "").join(" ") || "";
+    if (!rawText && searchJson.visual_matches?.length > 0) rawText = searchJson.visual_matches[0]?.title || "";
+    
+    let textQuery = "";
+    if (rawText) {
+       textQuery = String(rawText)
+           .replace(/eBay|Discogs|Popsike|Vinyl|LP|CD|Record|Album/ig, '')
+           .replace(/\|.*/g, '')
+           .replace(/-.*/g, '')
+           .replace(/[^a-zA-Z0-9& ]/g, "")
+           .trim();
+       textQuery = textQuery.split(/\s+/).slice(0, 5).join(" ");
     }
-    
-    // Scrubber: Keeps only the first 5 clean words so eBay Sold doesn't break
-    let textQuery = rawText.replace(/eBay|Discogs|Popsike|Vinyl|LP|CD|Record|Album/ig, '')
-                           .replace(/\|.*/g, '').replace(/-.*/g, '')
-                           .replace(/[^a-zA-Z0-9& ]/g, "").trim();
-    textQuery = textQuery.split(/\s+/).slice(0, 5).join(" ");
 
-    // 2. DISCOGS API FETCH WITH DEBUGGING
-    const visualMatches = searchJson.visual_matches || [];
-    const discogsMatches = visualMatches.filter(m => m.link.toLowerCase().includes('discogs.com')).slice(0, 4);
-    
+    const allowedSites = ["discogs.com", "ebay.com", "popsike.com", "upcitemdb.com"];
+    const matches = (searchJson.visual_matches || []).filter(match => match?.link && allowedSites.some(s => match.link.toLowerCase().includes(s))).slice(0, 6);
+
+    // DISCOGS API FETCH
+    const discogsMatches = matches.filter(m => m.link.toLowerCase().includes('discogs.com'));
     const processedDiscogs = await Promise.all(discogsMatches.map(async (match) => {
        let discogsData = { have: '--', want: '--', rating: '--', ratingsCount: '--', lastSold: 'API Hidden', low: '--', median: '--', high: '--', debug: '' };
        
        if (!process.env.DISCOGS_TOKEN) {
-           discogsData.debug = "NO_DISCOGS_TOKEN_SAVED_IN_VERCEL";
+           discogsData.debug = "MISSING_DISCOGS_TOKEN_IN_VERCEL";
        } else {
            const idMatch = match.link.match(/\/(?:release|master|sell\/(?:release|item|history))\/(\d+)/i);
            if (idMatch) {
@@ -68,7 +73,7 @@ export async function POST(request) {
                        discogsData.rating = rJson.community?.rating?.average ?? '--';
                        discogsData.ratingsCount = rJson.community?.rating?.count ?? '--';
                    } else {
-                       discogsData.debug += `Data_Error_${relRes.status} `;
+                       discogsData.debug += `Data_Failed_${relRes.status} `;
                    }
 
                    if (priceRes.ok) {
@@ -77,7 +82,7 @@ export async function POST(request) {
                        discogsData.median = pJson["Very Good Plus (VG+)"]?.value ? `$${pJson["Very Good Plus (VG+)"].value.toFixed(2)}` : '--';
                        discogsData.high = pJson["Near Mint (NM or M-)"]?.value ? `$${pJson["Near Mint (NM or M-)"].value.toFixed(2)}` : '--';
                    } else {
-                       discogsData.debug += `Price_Error_${priceRes.status}`;
+                       discogsData.debug += `Pricing_Failed_${priceRes.status}`;
                    }
                } catch(e) {
                    discogsData.debug = "API_CRASH";
@@ -86,27 +91,28 @@ export async function POST(request) {
                discogsData.debug = "NO_ID_IN_URL";
            }
        }
-       return { ...match, discogsData };
+       return { title: match.title, link: match.link, thumbnail: match.thumbnail, source: match.source, discogsData };
     }));
 
-    // 3. EBAY DIRECT SEARCHES (Bypasses Lens entirely to guarantee prices and sold data)
+    // EBAY DIRECT SEARCHES
     let ebayActive = [];
     let ebaySold = [];
     
     if (textQuery) {
-       const [activeRes, soldRes] = await Promise.all([
-           fetch(`https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(textQuery)}&api_key=${process.env.SERPAPI_KEY}`),
-           fetch(`https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(textQuery)}&LH_Sold=1&LH_Complete=1&api_key=${process.env.SERPAPI_KEY}`)
-       ]);
-
        try {
-           const activeJson = await activeRes.json();
-           ebayActive = (activeJson.organic_results || []).slice(0, 6);
-       } catch(e) {}
-       
-       try {
-           const soldJson = await soldRes.json();
-           ebaySold = (soldJson.organic_results || []).slice(0, 6);
+           const [activeRes, soldRes] = await Promise.all([
+               fetch(`https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(textQuery)}&api_key=${process.env.SERPAPI_KEY}`),
+               fetch(`https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(textQuery)}&LH_Sold=1&LH_Complete=1&api_key=${process.env.SERPAPI_KEY}`)
+           ]);
+           
+           if (activeRes.ok) {
+               const activeJson = await activeRes.json();
+               ebayActive = Array.isArray(activeJson.organic_results) ? activeJson.organic_results.slice(0, 6) : [];
+           }
+           if (soldRes.ok) {
+               const soldJson = await soldRes.json();
+               ebaySold = Array.isArray(soldJson.organic_results) ? soldJson.organic_results.slice(0, 6) : [];
+           }
        } catch(e) {}
     }
 
