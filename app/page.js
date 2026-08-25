@@ -27,20 +27,31 @@ export default function Home() {
   const handleCapture = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    setLoading(true); setErrorMsg(""); setDiscogs([]); setEbayActive([]); setEbaySold([]); setTextQuery(""); setHasSearched(true);
+    
+    setLoading(true); 
+    setErrorMsg(""); 
+    setDiscogs([]); 
+    setEbayActive([]); 
+    setEbaySold([]); 
+    setTextQuery(""); 
+    setHasSearched(false);
     
     try {
       const smallFile = await shrinkImage(file);
-      const formData = new FormData(); formData.append('image', smallFile);
+      const formData = new FormData(); 
+      formData.append('image', smallFile);
       
       const res = await fetch('/api/search', { method: 'POST', body: formData });
       const data = await res.json();
+      
       if (data.error) throw new Error(data.error);
       
       setDiscogs(Array.isArray(data.discogsMatches) ? data.discogsMatches : []);
       setEbayActive(Array.isArray(data.ebayActiveMatches) ? data.ebayActiveMatches : []);
       setEbaySold(Array.isArray(data.ebaySoldResults) ? data.ebaySoldResults : []);
-      setTextQuery(data.textQuery || "");
+      setTextQuery(data.textQuery || "Vinyl Record");
+      setHasSearched(true);
+      
     } catch (error) { 
       setErrorMsg("Something went wrong: " + error.message); 
     } finally { 
@@ -48,15 +59,11 @@ export default function Home() {
     }
   };
 
-  const safeDiscogs = Array.isArray(discogs) ? discogs : [];
-  const safeEbayActive = Array.isArray(ebayActive) ? ebayActive : [];
-  const safeEbaySold = Array.isArray(ebaySold) ? ebaySold : [];
-
-  const ebaySoldDirectUrl = textQuery ? `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(textQuery)}&_sacat=0&_from=R40&rt=nc&LH_Sold=1` : '#';
+  const ebaySoldDirectUrl = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(textQuery)}&_sacat=0&_from=R40&rt=nc&LH_Sold=1`;
 
   return (
     <main style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto', backgroundColor: '#fff' }}>
-      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V13</h2>
+      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V14</h2>
       
       <input type="file" accept="image/*" capture="environment" onChange={handleCapture} style={{ padding: '10px', fontSize: '16px', marginBottom: '15px', width: '100%', backgroundColor: '#f9f9f9', border: '1px solid #ccc', borderRadius: '5px' }} />
       
@@ -64,9 +71,9 @@ export default function Home() {
       {errorMsg && <p style={{ color: 'red', fontWeight: 'bold' }}>{errorMsg}</p>}
       
       {/* 1. EXTRACTED SEARCH QUERY */}
-      {textQuery && !loading && (
+      {hasSearched && (
         <div style={{ padding: '15px', backgroundColor: '#f0f0f0', borderRadius: '8px', marginBottom: '20px' }}>
-          <p style={{ margin: '0 0 5px 0', fontSize: '12px', color: 'gray' }}>Basic String Search Query:</p>
+          <p style={{ margin: '0 0 5px 0', fontSize: '12px', color: 'gray' }}>eBay Search Query:</p>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <strong style={{ fontSize: '16px' }}>{textQuery}</strong>
           </div>
@@ -74,10 +81,10 @@ export default function Home() {
       )}
 
       {/* 2. DISCOGS SECTION */}
-      {safeDiscogs.length > 0 && (
+      {discogs.length > 0 && (
         <div style={{ marginBottom: '40px' }}>
           <h3 style={{ backgroundColor: '#333', color: 'white', padding: '10px 15px', borderRadius: '4px', margin: '0 0 15px 0' }}>Discogs Matches</h3>
-          {safeDiscogs.map((item, i) => (
+          {discogs.map((item, i) => (
             <div key={i} style={{ marginBottom: '20px', borderBottom: '2px solid #eee', paddingBottom: '20px' }}>
               <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
                 {item?.thumbnail ? <img src={item.thumbnail} alt="match" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '4px', flexShrink: 0 }} /> : <div style={{ width: '80px', height: '80px', backgroundColor: '#eee', borderRadius: '4px', flexShrink: 0 }} />}
@@ -87,7 +94,7 @@ export default function Home() {
                 </div>
               </div>
               
-              {/* DISCOGS 4x2 GRID - FORCED TO RENDER */}
+              {/* DISCOGS GRID */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '13px', backgroundColor: '#fafafa', padding: '12px', borderRadius: '6px', marginTop: '15px', border: '1px solid #e0e0e0' }}>
                 <div><span style={{color: 'gray'}}>Have:</span> <strong>{item?.discogsData?.have || '--'}</strong></div>
                 <div><span style={{color: 'gray'}}>Want:</span> <strong>{item?.discogsData?.want || '--'}</strong></div>
@@ -99,10 +106,10 @@ export default function Home() {
                 <div><span style={{color: 'gray'}}>High:</span> <strong>{item?.discogsData?.high || '--'}</strong></div>
               </div>
               
-              {/* DIAGNOSTIC FOR DISCOGS API */}
-              {item?.discogsData?.debug && (
-                 <div style={{ color: item.discogsData.debug === 'API_OK' || item.discogsData.debug === 'SCRAPE_OK' ? 'green' : '#d93025', fontSize: '12px', marginTop: '10px', fontWeight: 'bold' }}>
-                    DATA SOURCE: {item.discogsData.debug}
+              {/* API DIAGNOSTIC */}
+              {item?.discogsData?.debug && item.discogsData.debug !== 'OK' && (
+                 <div style={{ color: '#d93025', fontSize: '12px', marginTop: '10px', fontWeight: 'bold' }}>
+                    Diagnostic: {item.discogsData.debug}
                  </div>
               )}
             </div>
@@ -111,24 +118,23 @@ export default function Home() {
       )}
 
       {/* 3. EBAY ACTIVE SECTION */}
-      {safeEbayActive.length > 0 && (
+      {ebayActive.length > 0 && (
         <div style={{ marginBottom: '40px' }}>
           <h3 style={{ backgroundColor: '#0064d2', color: 'white', padding: '10px 15px', borderRadius: '4px', margin: '0 0 15px 0' }}>eBay Active Matches</h3>
-          {safeEbayActive.map((item, i) => (
+          {ebayActive.map((item, i) => (
             <div key={i} style={{ marginBottom: '15px', borderBottom: '1px solid #eee', paddingBottom: '15px' }}>
               <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
                 {item?.thumbnail ? <img src={item.thumbnail} alt="match" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '4px', flexShrink: 0 }} /> : <div style={{ width: '80px', height: '80px', backgroundColor: '#eee', borderRadius: '4px', flexShrink: 0 }} />}
                 <div style={{ flex: 1 }}>
                   <a href={item?.link || '#'} target="_blank" rel="noreferrer" style={{ display: 'block', fontWeight: 'bold', fontSize: '14px', marginBottom: '5px' }}>{item?.title || 'Unknown Title'}</a>
                   
-                  {/* PRICE DISPLAY WITH EXPLANATION IF MISSING */}
                   {item?.price?.raw || item?.price?.extracted_value ? (
                       <div style={{ fontWeight: 'bold', color: 'green', fontSize: '16px', marginBottom: '3px' }}>
                         {item.price.raw || `$${item.price.extracted_value}`}
                       </div>
                   ) : (
                       <div style={{ fontWeight: 'bold', color: '#d93025', fontSize: '12px', marginBottom: '3px' }}>
-                        Lens Missed Price - Click to View
+                        Lens Missed Price
                       </div>
                   )}
 
@@ -140,9 +146,9 @@ export default function Home() {
         </div>
       )}
 
-      {/* 4. EBAY SOLD SECTION - PERMANENTLY RENDERED */}
-      {hasSearched && !loading && (
-        <div style={{ marginBottom: '40px', borderTop: '4px solid #8b0000', paddingTop: '20px', minHeight: '150px' }}>
+      {/* 4. EBAY SOLD SECTION */}
+      {hasSearched && (
+        <div style={{ marginBottom: '40px', borderTop: '4px solid #8b0000', paddingTop: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
             <h3 style={{ margin: 0, color: '#8b0000' }}>eBay Sold History</h3>
             <a href={ebaySoldDirectUrl} target="_blank" rel="noreferrer" style={{ fontSize: '13px', color: '#0064d2', textDecoration: 'none', fontWeight: 'bold', border: '1px solid #0064d2', padding: '5px 10px', borderRadius: '4px' }}>
@@ -150,14 +156,13 @@ export default function Home() {
             </a>
           </div>
           
-          {/* FALLBACK MESSAGE IF SOLD RESULTS ARE EMPTY */}
-          {safeEbaySold.length === 0 ? (
+          {ebaySold.length === 0 ? (
             <div style={{ padding: '20px', backgroundColor: '#fff5f5', border: '1px solid #fcdcdc', borderRadius: '6px', textAlign: 'center' }}>
                <p style={{ fontSize: '14px', color: '#8b0000', margin: 0, fontWeight: 'bold' }}>No Sold Results Found.</p>
-               <p style={{ fontSize: '12px', color: 'gray', marginTop: '5px' }}>The search query "{textQuery}" returned 0 sold items. Click the "View All Sold" button to adjust the search manually.</p>
+               <p style={{ fontSize: '12px', color: 'gray', marginTop: '5px' }}>The search query "{textQuery}" returned 0 sold items.</p>
             </div>
           ) : (
-            safeEbaySold.map((item, i) => (
+            ebaySold.map((item, i) => (
               <div key={i} style={{ marginBottom: '12px', padding: '12px', backgroundColor: '#fff5f5', borderRadius: '6px', border: '1px solid #fcdcdc' }}>
                 <a href={item?.link || '#'} target="_blank" rel="noreferrer" style={{ display: 'block', fontSize: '14px', marginBottom: '8px', color: '#333', textDecoration: 'none' }}>{item?.title || 'Unknown Title'}</a>
                 <div style={{ display: 'flex', alignItems: 'center' }}>
