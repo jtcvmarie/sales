@@ -54,17 +54,17 @@ export default function Home() {
 
   return (
     <main style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto', backgroundColor: '#fff' }}>
-      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V5</h2>
+      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V6</h2>
       
       <input type="file" accept="image/*" capture="environment" onChange={handleCapture} style={{ padding: '10px', fontSize: '16px', marginBottom: '15px', width: '100%', backgroundColor: '#f9f9f9', border: '1px solid #ccc', borderRadius: '5px' }} />
       
-      {loading && <p style={{ fontWeight: 'bold', color: '#0070f3' }}>Scanning artwork, reading pages, and fetching data...</p>}
+      {loading && <p style={{ fontWeight: 'bold', color: '#0070f3' }}>Scanning artwork & querying high-speed APIs...</p>}
       {errorMsg && <p style={{ color: 'red', fontWeight: 'bold' }}>{errorMsg}</p>}
       
       {/* 1. TEXT EXTRACTOR */}
       {textQuery && !loading && (
         <div style={{ padding: '15px', backgroundColor: '#f0f0f0', borderRadius: '8px', marginBottom: '20px' }}>
-          <p style={{ margin: '0 0 5px 0', fontSize: '12px', color: 'gray' }}>Google Lens Detected Text:</p>
+          <p style={{ margin: '0 0 5px 0', fontSize: '12px', color: 'gray' }}>Search Query Used:</p>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <strong style={{ fontSize: '16px' }}>{textQuery}</strong>
             <button onClick={() => { navigator.clipboard.writeText(textQuery); setCopySuccess(true); setTimeout(() => setCopySuccess(false), 2000); }}
@@ -89,17 +89,19 @@ export default function Home() {
                 </div>
               </div>
               
-              {/* DISCOGS 4x2 GRID - Guaranteed to render for EVERY Discogs link */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '13px', backgroundColor: '#fafafa', padding: '12px', borderRadius: '6px', marginTop: '15px', border: '1px solid #e0e0e0' }}>
-                <div><span style={{color: 'gray'}}>Have:</span> <strong>{item.discogsData?.have || '--'}</strong></div>
-                <div><span style={{color: 'gray'}}>Want:</span> <strong>{item.discogsData?.want || '--'}</strong></div>
-                <div><span style={{color: 'gray'}}>Avg Rating:</span> <strong>{item.discogsData?.rating || '--'}</strong></div>
-                <div><span style={{color: 'gray'}}>Ratings:</span> <strong>{item.discogsData?.ratingsCount || '--'}</strong></div>
-                <div><span style={{color: 'gray'}}>Last Sold:</span> <strong style={{color: '#8b0000'}}>{item.discogsData?.lastSold || '--'}</strong></div>
-                <div><span style={{color: 'gray'}}>Low:</span> <strong>{item.discogsData?.low || '--'}</strong></div>
-                <div><span style={{color: 'gray'}}>Median:</span> <strong>{item.discogsData?.median || '--'}</strong></div>
-                <div><span style={{color: 'gray'}}>High:</span> <strong>{item.discogsData?.high || '--'}</strong></div>
-              </div>
+              {/* DISCOGS 4x2 GRID */}
+              {item.discogsData && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '13px', backgroundColor: '#fafafa', padding: '12px', borderRadius: '6px', marginTop: '15px', border: '1px solid #e0e0e0' }}>
+                  <div><span style={{color: 'gray'}}>Have:</span> <strong>{item.discogsData.have}</strong></div>
+                  <div><span style={{color: 'gray'}}>Want:</span> <strong>{item.discogsData.want}</strong></div>
+                  <div><span style={{color: 'gray'}}>Avg Rating:</span> <strong>{item.discogsData.rating}</strong></div>
+                  <div><span style={{color: 'gray'}}>Ratings:</span> <strong>{item.discogsData.ratingsCount}</strong></div>
+                  <div><span style={{color: 'gray'}}>Last Sold:</span> <strong style={{color: '#8b0000'}}>{item.discogsData.lastSold}</strong></div>
+                  <div><span style={{color: 'gray'}}>Low:</span> <strong>{item.discogsData.low}</strong></div>
+                  <div><span style={{color: 'gray'}}>Median:</span> <strong>{item.discogsData.median}</strong></div>
+                  <div><span style={{color: 'gray'}}>High:</span> <strong>{item.discogsData.high}</strong></div>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -109,28 +111,20 @@ export default function Home() {
       {ebayActive.length > 0 && (
         <div style={{ marginBottom: '40px' }}>
           <h3 style={{ backgroundColor: '#0064d2', color: 'white', padding: '10px 15px', borderRadius: '4px', margin: '0 0 15px 0' }}>eBay Active Matches</h3>
-          {ebayActive.map((item, i) => {
-            // Checks for scraped price first, then Lens fallback, then "--"
-            let finalPrice = "--";
-            if (item.ebayPrice) finalPrice = item.ebayPrice;
-            else if (item.price && item.price.raw) finalPrice = item.price.raw;
-            else if (item.price && item.price.extracted_value) finalPrice = `${item.price.currency}${item.price.extracted_value}`;
-            
-            return (
-              <div key={i} style={{ marginBottom: '15px', borderBottom: '1px solid #eee', paddingBottom: '15px' }}>
-                <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
-                  {item.thumbnail ? <img src={item.thumbnail} alt="match" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '4px', flexShrink: 0 }} /> : <div style={{ width: '80px', height: '80px', backgroundColor: '#eee', borderRadius: '4px', flexShrink: 0 }} />}
-                  <div style={{ flex: 1 }}>
-                    <a href={item.link} target="_blank" rel="noreferrer" style={{ display: 'block', fontWeight: 'bold', fontSize: '14px', marginBottom: '5px' }}>{item.title}</a>
-                    <div style={{ fontWeight: 'bold', color: 'green', fontSize: '16px', marginBottom: '3px' }}>
-                      {finalPrice}
-                    </div>
-                    <div style={{ fontSize: '12px', color: 'gray' }}>Source: eBay</div>
+          {ebayActive.map((item, i) => (
+            <div key={i} style={{ marginBottom: '15px', borderBottom: '1px solid #eee', paddingBottom: '15px' }}>
+              <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
+                {item.thumbnail ? <img src={item.thumbnail} alt="match" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '4px', flexShrink: 0 }} /> : <div style={{ width: '80px', height: '80px', backgroundColor: '#eee', borderRadius: '4px', flexShrink: 0 }} />}
+                <div style={{ flex: 1 }}>
+                  <a href={item.link} target="_blank" rel="noreferrer" style={{ display: 'block', fontWeight: 'bold', fontSize: '14px', marginBottom: '5px' }}>{item.title}</a>
+                  <div style={{ fontWeight: 'bold', color: 'green', fontSize: '16px', marginBottom: '3px' }}>
+                    {item.price?.raw || (item.price?.extracted_value ? `${item.price.currency}${item.price.extracted_value}` : "View Listing")}
                   </div>
+                  <div style={{ fontSize: '12px', color: 'gray' }}>Source: eBay</div>
                 </div>
               </div>
-            )
-          })}
+            </div>
+          ))}
         </div>
       )}
 
@@ -144,7 +138,7 @@ export default function Home() {
             </a>
           </div>
           
-          {ebaySold.length === 0 && <p style={{ fontSize: '14px', color: 'gray' }}>No recent sold history found for this scan.</p>}
+          {ebaySold.length === 0 && <p style={{ fontSize: '14px', color: 'gray' }}>No recent sold history found.</p>}
           
           {ebaySold.map((item, i) => (
             <div key={i} style={{ marginBottom: '12px', padding: '12px', backgroundColor: '#fff5f5', borderRadius: '6px', border: '1px solid #fcdcdc' }}>
@@ -153,24 +147,6 @@ export default function Home() {
                 {item.price && <span style={{ fontWeight: 'bold', color: 'green', fontSize: '16px', marginRight: '10px' }}>{item.price.raw}</span>}
                 <span style={{ fontSize: '11px', color: 'white', backgroundColor: '#8b0000', padding: '2px 6px', borderRadius: '3px', fontWeight: 'bold' }}>SOLD</span>
                 {item.condition && <span style={{ fontSize: '12px', color: 'gray', marginLeft: 'auto' }}>{item.condition}</span>}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* 5. OTHER SITES */}
-      {otherActive.length > 0 && (
-        <div style={{ marginBottom: '40px' }}>
-          <h3 style={{ backgroundColor: '#555', color: 'white', padding: '10px 15px', borderRadius: '4px', margin: '0 0 15px 0' }}>Other Matches</h3>
-          {otherActive.map((item, i) => (
-            <div key={i} style={{ marginBottom: '15px', borderBottom: '1px solid #eee', paddingBottom: '15px' }}>
-              <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
-                {item.thumbnail ? <img src={item.thumbnail} alt="match" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '4px', flexShrink: 0 }} /> : <div style={{ width: '80px', height: '80px', backgroundColor: '#eee', borderRadius: '4px', flexShrink: 0 }} />}
-                <div style={{ flex: 1 }}>
-                  <a href={item.link} target="_blank" rel="noreferrer" style={{ display: 'block', fontWeight: 'bold', fontSize: '14px', marginBottom: '5px' }}>{item.title}</a>
-                  <div style={{ fontSize: '12px', color: 'gray' }}>Source: {item.source}</div>
-                </div>
               </div>
             </div>
           ))}
