@@ -85,7 +85,7 @@ export default function Home() {
 
   return (
     <main style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto', backgroundColor: '#fff' }}>
-      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V19</h2>
+      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V20</h2>
       
       <input 
         type="file" 
@@ -101,7 +101,7 @@ export default function Home() {
       {/* 1. EXTRACTED SEARCH QUERY */}
       {hasSearched && (
         <div style={{ padding: '15px', backgroundColor: '#f0f0f0', borderRadius: '8px', marginBottom: '20px' }}>
-          <p style={{ margin: '0 0 5px 0', fontSize: '12px', color: 'gray' }}>eBay Sold Search Query:</p>
+          <p style={{ margin: '0 0 5px 0', fontSize: '12px', color: 'gray' }}>First 6 Words Used For eBay Sold Search:</p>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <strong style={{ fontSize: '16px', color: '#0056b3' }}>{textQuery}</strong>
           </div>
@@ -113,7 +113,7 @@ export default function Home() {
         <div style={{ marginBottom: '40px' }}>
           <h3 style={{ backgroundColor: '#333', color: 'white', padding: '10px 15px', borderRadius: '4px', margin: '0 0 15px 0' }}>Discogs Matches</h3>
           {discogs.map((item, i) => {
-            const dData = item.discogsData || { have: '--', want: '--', rating: '--', ratingsCount: '--', lastSold: '--', low: '--', median: '--', high: '--', debug: 'NO_DATA' };
+            const dData = item.discogsData || { have: '--', want: '--', rating: '--', ratingsCount: '--', lastSold: '--', low: '--', median: '--', high: '--', debug: 'NO_DATA_RETURNED' };
             
             return (
               <div key={i} style={{ marginBottom: '20px', borderBottom: '2px solid #eee', paddingBottom: '20px' }}>
@@ -143,10 +143,10 @@ export default function Home() {
                   <div><span style={{ color: 'gray' }}>High:</span> <strong>{dData.high}</strong></div>
                 </div>
                 
-                {/* DIAGNOSTIC */}
+                {/* API DIAGNOSTIC LOGGER */}
                 {dData.debug && dData.debug !== "SUCCESS" && (
                   <div style={{ color: '#d93025', fontSize: '11px', marginTop: '10px', fontWeight: 'bold', padding: '8px', backgroundColor: '#ffe6e6', borderRadius: '4px' }}>
-                    Status: {dData.debug}
+                    {dData.debug}
                   </div>
                 )}
               </div>
@@ -178,7 +178,7 @@ export default function Home() {
                     </div>
                   ) : (
                     <div style={{ fontWeight: 'bold', color: '#666', fontSize: '12px', marginBottom: '3px' }}>
-                      View on eBay
+                      Price Hidden by eBay - Click to View
                     </div>
                   )}
 
