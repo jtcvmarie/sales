@@ -56,14 +56,14 @@ export default function Home() {
 
   return (
     <main style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto', backgroundColor: '#fff' }}>
-      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V12</h2>
+      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V13</h2>
       
       <input type="file" accept="image/*" capture="environment" onChange={handleCapture} style={{ padding: '10px', fontSize: '16px', marginBottom: '15px', width: '100%', backgroundColor: '#f9f9f9', border: '1px solid #ccc', borderRadius: '5px' }} />
       
       {loading && <p style={{ fontWeight: 'bold', color: '#0070f3' }}>Scanning artwork & querying secure APIs...</p>}
       {errorMsg && <p style={{ color: 'red', fontWeight: 'bold' }}>{errorMsg}</p>}
       
-      {/* 1. BASIC STRING EXTRACTOR */}
+      {/* 1. EXTRACTED SEARCH QUERY */}
       {textQuery && !loading && (
         <div style={{ padding: '15px', backgroundColor: '#f0f0f0', borderRadius: '8px', marginBottom: '20px' }}>
           <p style={{ margin: '0 0 5px 0', fontSize: '12px', color: 'gray' }}>Basic String Search Query:</p>
@@ -87,13 +87,13 @@ export default function Home() {
                 </div>
               </div>
               
-              {/* DISCOGS 4x2 GRID - FORCED TO RENDER ALWAYS */}
+              {/* DISCOGS 4x2 GRID - FORCED TO RENDER */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '13px', backgroundColor: '#fafafa', padding: '12px', borderRadius: '6px', marginTop: '15px', border: '1px solid #e0e0e0' }}>
                 <div><span style={{color: 'gray'}}>Have:</span> <strong>{item?.discogsData?.have || '--'}</strong></div>
                 <div><span style={{color: 'gray'}}>Want:</span> <strong>{item?.discogsData?.want || '--'}</strong></div>
                 <div><span style={{color: 'gray'}}>Avg Rating:</span> <strong>{item?.discogsData?.rating || '--'}</strong></div>
                 <div><span style={{color: 'gray'}}>Ratings:</span> <strong>{item?.discogsData?.ratingsCount || '--'}</strong></div>
-                <div><span style={{color: 'gray'}}>Last Sold:</span> <strong style={{color: '#8b0000'}}>--</strong></div>
+                <div><span style={{color: 'gray'}}>Last Sold:</span> <strong style={{color: '#8b0000'}}>{item?.discogsData?.lastSold || '--'}</strong></div>
                 <div><span style={{color: 'gray'}}>Low:</span> <strong>{item?.discogsData?.low || '--'}</strong></div>
                 <div><span style={{color: 'gray'}}>Median:</span> <strong>{item?.discogsData?.median || '--'}</strong></div>
                 <div><span style={{color: 'gray'}}>High:</span> <strong>{item?.discogsData?.high || '--'}</strong></div>
@@ -101,8 +101,8 @@ export default function Home() {
               
               {/* DIAGNOSTIC FOR DISCOGS API */}
               {item?.discogsData?.debug && (
-                 <div style={{ color: item.discogsData.debug === 'API_OK' ? 'green' : '#d93025', fontSize: '12px', marginTop: '10px', fontWeight: 'bold' }}>
-                    API DIAGNOSTIC: {item.discogsData.debug}
+                 <div style={{ color: item.discogsData.debug === 'API_OK' || item.discogsData.debug === 'SCRAPE_OK' ? 'green' : '#d93025', fontSize: '12px', marginTop: '10px', fontWeight: 'bold' }}>
+                    DATA SOURCE: {item.discogsData.debug}
                  </div>
               )}
             </div>
@@ -113,7 +113,7 @@ export default function Home() {
       {/* 3. EBAY ACTIVE SECTION */}
       {safeEbayActive.length > 0 && (
         <div style={{ marginBottom: '40px' }}>
-          <h3 style={{ backgroundColor: '#0064d2', color: 'white', padding: '10px 15px', borderRadius: '4px', margin: '0 0 15px 0' }}>eBay Active</h3>
+          <h3 style={{ backgroundColor: '#0064d2', color: 'white', padding: '10px 15px', borderRadius: '4px', margin: '0 0 15px 0' }}>eBay Active Matches</h3>
           {safeEbayActive.map((item, i) => (
             <div key={i} style={{ marginBottom: '15px', borderBottom: '1px solid #eee', paddingBottom: '15px' }}>
               <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
@@ -128,7 +128,7 @@ export default function Home() {
                       </div>
                   ) : (
                       <div style={{ fontWeight: 'bold', color: '#d93025', fontSize: '12px', marginBottom: '3px' }}>
-                        Lens Missed Price - Click Title to View
+                        Lens Missed Price - Click to View
                       </div>
                   )}
 
