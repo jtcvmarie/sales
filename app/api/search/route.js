@@ -48,7 +48,7 @@ export async function POST(request) {
       textQuery = manualQuery;
       
       const dPromise = discogsToken ? fetch(`https://api.discogs.com/database/search?q=${encodeURIComponent(textQuery)}&type=release&per_page=15`, {
-        headers: { 'User-Agent': 'RecordLens/19.0', 'Authorization': `Discogs token=${discogsToken}` }
+        headers: { 'User-Agent': 'RecordLens/20.0', 'Authorization': `Discogs token=${discogsToken}` }
       }).then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null);
       
       const ePromise = fetch(`https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(textQuery)}&api_key=${serpapiKey}`)
@@ -60,7 +60,6 @@ export async function POST(request) {
           discogsLinks = dJson.results.map(r => ({ link: `https://www.discogs.com/release/${r.id}`, title: r.title, thumbnail: r.thumb }));
       }
       if (eJson && eJson.organic_results) {
-          // Safely pass the raw objects; we will strict-parse them in the Concurrent processing
           ebayLinks = eJson.organic_results.slice(0, 10).map(r => ({ 
               link: r.link, 
               title: r.title, 
@@ -78,17 +77,19 @@ export async function POST(request) {
     // ==========================================
 
     const discogsTask = Promise.all(discogsLinks.map(async (match) => {
-      let discogsData = { have: '--', want: '--', activeLow: '--', label: '--', format: '--', country: '--', released: '--' };
+      let discogsData = { have: '--', want: '--', activeLow: '--', activeHigh: '--', label: '--', format: '--', country: '--', released: '--' };
       if (discogsToken) {
         const idMatch = match.link.match(/\/(?:release|master|sell\/(?:release|item|history))\/(\d+)/i);
         if (idMatch) {
           let id = idMatch[1];
-          const headers = { 'User-Agent': 'RecordLens/19.0', 'Authorization': `Discogs token=${discogsToken}` };
+          const headers = { 'User-Agent': 'RecordLens/20.0', 'Authorization': `Discogs token=${discogsToken}` };
           try {
             if (match.link.includes('/master/')) {
               const mRes = await fetch(`https://api.discogs.com/masters/${id}`, { headers });
               if (mRes.ok) id = (await mRes.json()).main_release;
             }
+            
+            // 1. Fetch Official API Data (Gets Lowest Price securely)
             const relRes = await fetch(`https://api.discogs.com/releases/${id}`, { headers });
             if (relRes.ok) {
               const rData = await relRes.json();
@@ -116,6 +117,21 @@ export async function POST(request) {
                   if (fmtArr.length > 0) discogsData.format = fmtArr.join(', ');
               }
             }
+
+            // 2. ATTEMPT HTML SCRAPE FOR HIGH PRICE (Bypassing API)
+            // Note: This is wrapped in a try/catch because Cloudflare may block Vercel IPs
+            try {
+              const highUrl = `https://www.discogs.com/sell/release/${id}?sort=price%2Cdesc`;
+              const highRes = await fetch(highUrl, { headers: botHeaders });
+              if (highRes.ok) {
+                 const highHtml = await highRes.text();
+                 const highMatch = highHtml.match(/class="item_price"[^>]*>([\s\S]*?)<\/span>/i) || highHtml.match(/class="price"[^>]*>([\s\S]*?)<\/span>/i);
+                 if (highMatch) {
+                     discogsData.activeHigh = highMatch[1].replace(/<[^>]+>/g, '').trim();
+                 }
+              }
+            } catch (e) {}
+
           } catch (err) {}
         }
       }
@@ -123,7 +139,6 @@ export async function POST(request) {
     }));
 
     const ebayActiveTask = Promise.all(ebayLinks.map(async (m) => {
-      // STRICT CRASH PREVENTION: Forcing price and shipping to be plain Strings
       let price = "";
       if (typeof m.price === 'string') price = m.price;
       else if (m.price && m.price.raw) price = m.price.raw;
