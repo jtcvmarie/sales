@@ -28,6 +28,7 @@ export async function POST(request) {
         const res = await fetch(soldUrl, { headers: botHeaders });
         const html = await res.text();
         
+        // Check for eBay's auto-fallback to fewer words
         if (html.match(/Matching fewer words/i) || html.match(/removed some search terms/i) || html.match(/No exact matches found/i)) {
             notice = "No exact matches found. Displaying results matching fewer words:";
         }
@@ -42,7 +43,11 @@ export async function POST(request) {
           let title = titleMatch[1].replace(/<[^>]+>/g, '').replace(/New Listing/i, '').trim();
 
           let linkMatch = block.match(/href="([^"]+)"/i);
-          let link = linkMatch ? linkMatch[1].split('?')[0] : "";
+          let link = "";
+          if (linkMatch) {
+              // Strip tracking garbage, but explicitly append orig_cvip=true to PREVENT auto-redirect to active listings
+              link = linkMatch[1].split('?')[0] + "?orig_cvip=true";
+          }
 
           let priceMatch = block.match(/<span[^>]*s-item__price[^>]*>([\s\S]*?)<\/span>/i);
           let price = priceMatch ? priceMatch[1].replace(/<[^>]+>/g, '').trim() : "";
@@ -60,7 +65,7 @@ export async function POST(request) {
         debugMsg += `Error (${e.message}). `;
       }
 
-      // FALLBACK TO SERPAPI IF BLOCKED BY CAPTCHA
+      // FALLBACK TO SERPAPI IF BLOCKED BY CAPTCHA OR 0 RESULTS
       if (results.length === 0 && apiKey) {
         debugMsg += "Fallback API: ";
         try {
@@ -73,9 +78,14 @@ export async function POST(request) {
           }
 
           if (serpJson.organic_results && serpJson.organic_results.length > 0) {
-            results = serpJson.organic_results.slice(0, 15).map(item => ({
-              title: item.title, link: item.link, price: item.price?.raw || null, condition: item.condition || "Sold"
-            }));
+            results = serpJson.organic_results.slice(0, 15).map(item => {
+              // Guarantee SerpApi links don't redirect either
+              let safeLink = item.link;
+              if (!safeLink.includes('orig_cvip')) {
+                  safeLink += safeLink.includes('?') ? '&orig_cvip=true' : '?orig_cvip=true';
+              }
+              return { title: item.title, link: safeLink, price: item.price?.raw || null, condition: item.condition || "Sold" };
+            });
             debugMsg += `Found ${results.length} items.`;
           } else {
             debugMsg += "0 items found.";
@@ -134,9 +144,8 @@ export async function POST(request) {
     else if (manualQuery) {
       textQuery = manualQuery;
       
-      // Fire Discogs & eBay searches simultaneously
       const dPromise = discogsToken ? fetch(`https://api.discogs.com/database/search?q=${encodeURIComponent(textQuery)}&type=release&per_page=15`, {
-        headers: { 'User-Agent': 'RecordLens/8.0', 'Authorization': `Discogs token=${discogsToken}` }
+        headers: { 'User-Agent': 'RecordLens/9.0', 'Authorization': `Discogs token=${discogsToken}` }
       }).then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null);
       
       const ePromise = fetch(`https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(textQuery)}&api_key=${serpapiKey}`)
@@ -164,7 +173,7 @@ export async function POST(request) {
         const idMatch = match.link.match(/\/(?:release|master|sell\/(?:release|item|history))\/(\d+)/i);
         if (idMatch) {
           let id = idMatch[1];
-          const headers = { 'User-Agent': 'RecordLens/8.0', 'Authorization': `Discogs token=${discogsToken}` };
+          const headers = { 'User-Agent': 'RecordLens/9.0', 'Authorization': `Discogs token=${discogsToken}` };
           try {
             if (match.link.includes('/master/')) {
               const mRes = await fetch(`https://api.discogs.com/masters/${id}`, { headers });
