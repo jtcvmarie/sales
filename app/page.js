@@ -6,7 +6,7 @@ export default function Home() {
   const [ebayActive, setEbayActive] = useState([]);
   const [ebaySold, setEbaySold] = useState([]);
   const [soldNotice, setSoldNotice] = useState(null);
-  const [soldDebug, setSoldDebug] = useState(null); // Diagnostic output for 0 results
+  const [soldDebug, setSoldDebug] = useState(null); 
   
   // Independent Search Strings
   const [mainQuery, setMainQuery] = useState("");
@@ -130,7 +130,7 @@ export default function Home() {
 
   return (
     <main style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto', backgroundColor: '#fff', paddingBottom: '100px' }}>
-      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V34</h2>
+      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V35</h2>
       
       <input type="file" accept="image/*" capture="environment" onChange={handleCapture} style={{ padding: '10px', fontSize: '16px', marginBottom: '12px', width: '100%', backgroundColor: '#f9f9f9', border: '1px solid #ccc', borderRadius: '5px' }} />
       
@@ -183,7 +183,6 @@ export default function Home() {
                         {item.title}
                       </a>
                       
-                      {/* EMPHASIZED HAVE & WANT STATS */}
                       <div style={{ display: 'flex', gap: '12px' }}>
                         <div style={{ backgroundColor: '#eaf4ea', border: '1px solid #c8e6c9', borderRadius: '4px', padding: '4px 10px', fontSize: '13px' }}>
                           <span style={{ color: '#2e7d32', fontWeight: 'bold' }}>Have:</span> <strong style={{ fontSize: '14px', color: '#1b5e20' }}>{dData.have}</strong>
@@ -279,7 +278,6 @@ export default function Home() {
           {ebaySold.length === 0 ? (
             <div style={{ padding: '20px', backgroundColor: '#fff5f5', border: '1px solid #fcdcdc', borderRadius: '6px', textAlign: 'center' }}>
               <p style={{ fontSize: '14px', color: '#8b0000', margin: 0, fontWeight: 'bold' }}>No Sold Results Found.</p>
-              {/* TRANSPARENT ERROR OUTPUT SO YOU KNOW EXACTLY WHY IT FAILED */}
               {soldDebug && (
                  <p style={{ fontSize: '11px', color: '#d93025', marginTop: '10px', fontWeight: 'bold', backgroundColor: '#ffe6e6', padding: '8px', borderRadius: '4px', display: 'inline-block' }}>
                     Backend Diagnostic: {soldDebug}
