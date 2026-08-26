@@ -101,7 +101,7 @@ export default function Home() {
 
   const renderFormat = (fmtStr) => {
     if (!fmtStr || typeof fmtStr !== 'string' || fmtStr === '--') return '--';
-    const formatKeywords = ['vinyl', 'lp', '45', '78', '33', 'shellac', 'cassette', '7"', '10"', '12"', 'cd'];
+    const formatKeywords = ['vinyl', 'lp', '45', '78', '16"', '33', 'shellac', 'cassette', '7"', '10"', '12"', 'cd'];
     const parts = fmtStr.split(', ');
     
     return parts.map((part, i) => {
