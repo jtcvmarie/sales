@@ -13,7 +13,7 @@ export default function Home() {
   const [hasSearched, setHasSearched] = useState(false);
 
   // Layout View Toggles
-  const [showMarket, setShowMarket] = useState(true);
+  const [showMarketLow, setShowMarketLow] = useState(true);
   const [showDiscogs, setShowDiscogs] = useState(true);
   const [showEbay, setShowEbay] = useState(true);
 
@@ -121,7 +121,7 @@ export default function Home() {
 
   return (
     <main style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto', backgroundColor: '#fff', paddingBottom: '100px' }}>
-      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '15px' }}>Record Lens V47</h2>
+      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '15px' }}>Record Lens V48</h2>
       
       <input type="file" accept="image/*" capture="environment" onChange={handleCapture} style={{ padding: '10px', fontSize: '16px', marginBottom: '15px', width: '100%', backgroundColor: '#f9f9f9', border: '1px solid #ccc', borderRadius: '5px' }} />
       
@@ -146,7 +146,7 @@ export default function Home() {
       {/* VIEW TOGGLE CHECKBOXES */}
       <div style={{ display: 'flex', gap: '20px', marginBottom: '25px', fontSize: '14px', fontWeight: 'bold', color: '#444', backgroundColor: '#f5f5f5', padding: '10px 15px', borderRadius: '6px', border: '1px solid #ddd' }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-          <input type="checkbox" checked={showMarket} onChange={(e) => setShowMarket(e.target.checked)} style={{ width: '16px', height: '16px' }} /> Market
+          <input type="checkbox" checked={showMarketLow} onChange={(e) => setShowMarketLow(e.target.checked)} style={{ width: '16px', height: '16px' }} /> Market Low
         </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
           <input type="checkbox" checked={showDiscogs} onChange={(e) => setShowDiscogs(e.target.checked)} style={{ width: '16px', height: '16px' }} /> Discogs
@@ -179,7 +179,7 @@ export default function Home() {
               </div>
             ) : (
               discogs.map((item, i) => {
-                const dData = item.discogsData || { have: '--', want: '--', activeLow: '--', activeHigh: '--', label: '--', format: '--', country: '--', released: '--' };
+                const dData = item.discogsData || { have: '--', want: '--', activeLow: '--', label: '--', format: '--', country: '--', released: '--' };
                 
                 return (
                   <div key={i} style={{ marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '15px' }}>
@@ -196,7 +196,7 @@ export default function Home() {
                           {String(item.title || "")}
                         </a>
                         
-                        <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                           {/* LINE 1: HAVE & WANT */}
                           <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
                             <div style={{ backgroundColor: '#eaf4ea', border: '1px solid #c8e6c9', borderRadius: '4px', padding: '4px 10px', fontSize: '13px' }}>
@@ -207,19 +207,12 @@ export default function Home() {
                             </div>
                           </div>
 
-                          {/* LINE 2: MARKET LOW & HIGH */}
-                          {showMarket && (dData.activeLow !== '--' || dData.activeHigh !== '--') && (
-                            <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
-                              {dData.activeLow !== '--' && (
-                                 <div style={{ backgroundColor: '#e3f2fd', border: '1px solid #bbdefb', borderRadius: '4px', padding: '4px 10px', fontSize: '13px' }}>
-                                   <span style={{ color: '#1565c0', fontWeight: 'bold' }}>Low:</span> <strong style={{ fontSize: '14px', color: '#0d47a1' }}>{dData.activeLow}</strong>
-                                 </div>
-                              )}
-                              {dData.activeHigh !== '--' && (
-                                 <div style={{ backgroundColor: '#e3f2fd', border: '1px solid #bbdefb', borderRadius: '4px', padding: '4px 10px', fontSize: '13px' }}>
-                                   <span style={{ color: '#1565c0', fontWeight: 'bold' }}>High:</span> <strong style={{ fontSize: '14px', color: '#0d47a1' }}>{dData.activeHigh}</strong>
-                                 </div>
-                              )}
+                          {/* LINE 2: MARKET LOW (Smaller & Floated Right) */}
+                          {showMarketLow && dData.activeLow !== '--' && (
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '2px' }}>
+                              <div style={{ backgroundColor: '#e3f2fd', border: '1px solid #bbdefb', borderRadius: '4px', padding: '1px 6px' }}>
+                                <strong style={{ fontSize: '11px', color: '#0d47a1' }}>{dData.activeLow}</strong>
+                              </div>
                             </div>
                           )}
                         </div>
