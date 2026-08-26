@@ -41,7 +41,6 @@ export default function Home() {
       const smallFile = await shrinkImage(file);
       const formData = new FormData(); formData.append('image', smallFile);
       
-      // FETCHING FROM THE ORIGINAL ENDPOINT
       const res = await fetch('/api/search', { method: 'POST', body: formData });
       if (!res.ok) throw new Error(`Server returned status ${res.status}`);
       
@@ -65,7 +64,7 @@ export default function Home() {
 
   return (
     <main style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto', backgroundColor: '#fff', paddingBottom: '100px' }}>
-      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V24</h2>
+      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V25</h2>
       
       <input type="file" accept="image/*" capture="environment" onChange={handleCapture} style={{ padding: '10px', fontSize: '16px', marginBottom: '15px', width: '100%', backgroundColor: '#f9f9f9', border: '1px solid #ccc', borderRadius: '5px' }} />
       
@@ -113,6 +112,11 @@ export default function Home() {
                         API DIAGNOSTIC: {dData.debug}
                      </div>
                   )}
+                  {dData.debug && dData.debug.includes("0 Historical") && (
+                     <div style={{ color: '#0056b3', fontSize: '11px', marginTop: '10px', fontWeight: 'bold', padding: '8px', backgroundColor: '#e6f0ff', borderRadius: '4px' }}>
+                        Note: Discogs has 0 historical sales data for this exact pressing.
+                     </div>
+                  )}
                 </div>
               )
             })
@@ -136,6 +140,7 @@ export default function Home() {
                   {item.thumbnail ? <img src={item.thumbnail} alt="match" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '4px', flexShrink: 0 }} /> : <div style={{ width: '80px', height: '80px', backgroundColor: '#eee', borderRadius: '4px', flexShrink: 0 }} />}
                   <div style={{ flex: 1 }}>
                     <a href={item.link} target="_blank" rel="noreferrer" style={{ display: 'block', fontWeight: 'bold', fontSize: '14px', marginBottom: '5px' }}>{item.title}</a>
+                    
                     <div style={{ fontWeight: 'bold', color: item.price ? 'green' : '#666', fontSize: '16px', marginBottom: '3px' }}>
                       {item.price || "View on eBay"}
                     </div>
