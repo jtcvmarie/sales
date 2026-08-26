@@ -121,7 +121,7 @@ export default function Home() {
 
   return (
     <main style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto', backgroundColor: '#fff', paddingBottom: '100px' }}>
-      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '15px' }}>Record Lens V48</h2>
+      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '15px' }}>Record Lens V49</h2>
       
       <input type="file" accept="image/*" capture="environment" onChange={handleCapture} style={{ padding: '10px', fontSize: '16px', marginBottom: '15px', width: '100%', backgroundColor: '#f9f9f9', border: '1px solid #ccc', borderRadius: '5px' }} />
       
@@ -192,29 +192,35 @@ export default function Home() {
                       )}
                       
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                        <a href={item.link} target="_blank" rel="noreferrer" style={{ display: 'block', textAlign: 'left', fontWeight: 'bold', fontSize: '14px', marginBottom: '10px', color: '#0056b3', textDecoration: 'none', whiteSpace: 'normal', wordBreak: 'break-word' }}>
+                        <a href={item.link} target="_blank" rel="noreferrer" style={{ display: 'block', textAlign: 'left', fontWeight: 'bold', fontSize: '14px', marginBottom: '8px', color: '#0056b3', textDecoration: 'none', whiteSpace: 'normal', wordBreak: 'break-word' }}>
                           {String(item.title || "")}
                         </a>
                         
-                        <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          {/* LINE 1: HAVE & WANT */}
-                          <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
-                            <div style={{ backgroundColor: '#eaf4ea', border: '1px solid #c8e6c9', borderRadius: '4px', padding: '4px 10px', fontSize: '13px' }}>
+                        {/* THE SINGLE LINE LAYOUT: Center locked, Price floated right */}
+                        <div style={{ marginTop: 'auto', display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', marginBottom: '4px', gap: '4px', width: '100%' }}>
+                          
+                          {/* Column 1: Empty spacer to perfectly offset Column 3 */}
+                          <div /> 
+                          
+                          {/* Column 2: Dead-Center Badges */}
+                          <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'nowrap' }}>
+                            <div style={{ backgroundColor: '#eaf4ea', border: '1px solid #c8e6c9', borderRadius: '4px', padding: '4px 10px', fontSize: '13px', whiteSpace: 'nowrap' }}>
                               <span style={{ color: '#2e7d32', fontWeight: 'bold' }}>Have:</span> <strong style={{ fontSize: '14px', color: '#1b5e20' }}>{dData.have}</strong>
                             </div>
-                            <div style={{ backgroundColor: '#fff3e0', border: '1px solid #ffe0b2', borderRadius: '4px', padding: '4px 10px', fontSize: '13px' }}>
+                            <div style={{ backgroundColor: '#fff3e0', border: '1px solid #ffe0b2', borderRadius: '4px', padding: '4px 10px', fontSize: '13px', whiteSpace: 'nowrap' }}>
                               <span style={{ color: '#e65100', fontWeight: 'bold' }}>Want:</span> <strong style={{ fontSize: '14px', color: '#b71c1c' }}>{dData.want}</strong>
                             </div>
                           </div>
 
-                          {/* LINE 2: MARKET LOW (Smaller & Floated Right) */}
-                          {showMarketLow && dData.activeLow !== '--' && (
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '2px' }}>
-                              <div style={{ backgroundColor: '#e3f2fd', border: '1px solid #bbdefb', borderRadius: '4px', padding: '1px 6px' }}>
-                                <strong style={{ fontSize: '11px', color: '#0d47a1' }}>{dData.activeLow}</strong>
-                              </div>
-                            </div>
-                          )}
+                          {/* Column 3: Right-Aligned Price Badge */}
+                          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                            {showMarketLow && dData.activeLow !== '--' && (
+                               <div style={{ backgroundColor: '#e3f2fd', border: '1px solid #bbdefb', borderRadius: '4px', padding: '1px 6px', whiteSpace: 'nowrap' }}>
+                                 <strong style={{ fontSize: '11px', color: '#0d47a1' }}>{dData.activeLow}</strong>
+                               </div>
+                            )}
+                          </div>
+
                         </div>
                       </div>
                     </div>
