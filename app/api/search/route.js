@@ -25,126 +25,127 @@ export async function POST(request) {
     const searchJson = await searchRes.json();
     const visualMatches = searchJson.visual_matches || [];
 
-    // 3. Unbreakable Text Extraction
+    // 3. 10-Word Text Extraction
     let rawTitle = searchJson.knowledge_graph?.[0]?.title || visualMatches[0]?.title || "Vinyl Record";
     let cleanText = rawTitle.replace(/[-|—–]/g, ' ')
                             .replace(/[^a-zA-Z0-9\s]/g, '')
                             .replace(/\s+/g, ' ')
                             .trim();
-    let textQuery = cleanText.split(' ').slice(0, 5).join(' ');
+    
+    let textQuery = cleanText.split(' ').slice(0, 10).join(' ');
     if (!textQuery) textQuery = "Vinyl Record";
 
-    // 4. Process Discogs Matches
-    let discogsMatches = [];
+    // Prepare Concurrent Arrays
     const discogsLinks = visualMatches.filter(m => m.link && m.link.toLowerCase().includes('discogs.com')).slice(0, 5);
-    
-    for (let match of discogsLinks) {
-        let discogsData = { have: '--', want: '--', rating: '--', ratingsCount: '--', lastSold: 'API Hidden (Captcha Blocked)', low: '--', median: '--', high: '--', debug: 'PENDING' };
+    const ebayLinks = visualMatches.filter(m => m.link && m.link.toLowerCase().includes('ebay.com')).slice(0, 5);
+
+    // ==========================================
+    // MASSIVE SPEED BOOST: CONCURRENT EXECUTION
+    // ==========================================
+
+    // TASK 1: DISCOGS DATA (Active Low + Active High)
+    const discogsTask = Promise.all(discogsLinks.map(async (match) => {
+        let discogsData = { have: '--', want: '--', rating: '--', ratingsCount: '--', low: '--', high: '--', debug: '' };
         
-        if (discogsToken) {
-            const idMatch = match.link.match(/\/(?:release|master|sell\/(?:release|item|history))\/(\d+)/i);
-            if (idMatch) {
-                let id = idMatch[1];
-                const headers = { 'User-Agent': 'RecordLens/1.0', 'Authorization': `Discogs token=${discogsToken}` };
+        if (!discogsToken) {
+            discogsData.debug = "ERROR: Missing DISCOGS_TOKEN";
+            return { title: match.title, link: match.link, thumbnail: match.thumbnail, discogsData };
+        }
+
+        const idMatch = match.link.match(/\/(?:release|master|sell\/(?:release|item|history))\/(\d+)/i);
+        if (idMatch) {
+            let id = idMatch[1];
+            const headers = { 'User-Agent': 'RecordLens/3.0', 'Authorization': `Discogs token=${discogsToken}` };
+            
+            try {
+                if (match.link.includes('/master/')) {
+                    const mRes = await fetch(`https://api.discogs.com/masters/${id}`, { headers });
+                    if (mRes.ok) id = (await mRes.json()).main_release;
+                }
+
+                // Fetch Core Release API and Active Market HTML concurrently
+                const releaseFetch = fetch(`https://api.discogs.com/releases/${id}`, { headers }).then(r => r.ok ? r.json() : null).catch(() => null);
                 
-                try {
-                    if (match.link.includes('/master/')) {
-                        const mRes = await fetch(`https://api.discogs.com/masters/${id}`, { headers });
-                        if (mRes.ok) id = (await mRes.json()).main_release;
-                    }
+                const abortScrape = new AbortController();
+                const timeoutScrape = setTimeout(() => abortScrape.abort(), 1200); // 1.2s timeout
+                const marketFetch = fetch(`https://www.discogs.com/sell/release/${id}?sort=price%2Cdesc`, { headers: botHeaders, signal: abortScrape.signal })
+                    .then(r => r.text())
+                    .catch(() => null)
+                    .finally(() => clearTimeout(timeoutScrape));
 
-                    const [relRes, priceRes] = await Promise.all([
-                        fetch(`https://api.discogs.com/releases/${id}`, { headers }),
-                        fetch(`https://api.discogs.com/marketplace/price_suggestions/${id}`, { headers })
-                    ]);
+                const [rData, marketHtml] = await Promise.all([releaseFetch, marketFetch]);
 
-                    if (relRes.ok) {
-                        const rData = await relRes.json();
-                        discogsData.have = rData.community?.have ?? '--';
-                        discogsData.want = rData.community?.want ?? '--';
-                        discogsData.rating = rData.community?.rating?.average ?? '--';
-                        discogsData.ratingsCount = rData.community?.rating?.count ?? '--';
-                        
-                        // Explicitly label the fallback active price so it isn't confused with historical low
-                        if (rData.lowest_price) {
-                            discogsData.low = `$${rData.lowest_price.toFixed(2)} (Current Active Low)`;
-                        }
-                        discogsData.debug = "SUCCESS (API Data)";
-                    }
+                if (rData) {
+                    discogsData.have = rData.community?.have ?? '--';
+                    discogsData.want = rData.community?.want ?? '--';
+                    discogsData.rating = rData.community?.rating?.average ?? '--';
+                    discogsData.ratingsCount = rData.community?.rating?.count ?? '--';
+                    if (rData.lowest_price) discogsData.low = `$${rData.lowest_price.toFixed(2)}`;
+                } else {
+                    discogsData.debug = "ERROR: Release API Failed";
+                }
 
-                    if (priceRes.ok) {
-                        const pData = await priceRes.json();
-                        const fmt = v => v ? `$${v.toFixed(2)}` : null;
-                        
-                        // Overwrite with Suggested Pricing algorithm if available
-                        discogsData.low = fmt(pData["Good (G)"]?.value) || discogsData.low; 
-                        discogsData.median = fmt(pData["Very Good Plus (VG+)"]?.value) || '--';
-                        discogsData.high = fmt(pData["Near Mint (NM or M-)"]?.value) || '--';
-                        
-                    } else if (priceRes.status === 404) {
-                        discogsData.median = "No API Price Data";
-                        discogsData.high = "No API Price Data";
-                        discogsData.debug = "SUCCESS (Note: Discogs API has 0 price suggestions for this release)";
-                    } else if (priceRes.status === 500) {
-                        discogsData.median = "API Crash";
-                        discogsData.high = "API Crash";
-                        discogsData.debug = "WARNING: Discogs Server crashed when checking this specific ID (Error 500)";
-                    } else {
-                        discogsData.debug += ` | Pricing API Error ${priceRes.status}`;
-                    }
-                } catch (err) {}
+                if (marketHtml) {
+                    const highMatch = marketHtml.match(/class="item_price"[^>]*>\s*([A-Z£€]*\s*\$?\s*[\d,.]+)/i);
+                    if (highMatch) discogsData.high = highMatch[1].trim();
+                }
+
+            } catch (err) {
+                discogsData.debug = `ERROR: ${err.message}`;
             }
         }
-        discogsMatches.push({ title: match.title, link: match.link, thumbnail: match.thumbnail, discogsData });
-    }
+        return { title: match.title, link: match.link, thumbnail: match.thumbnail, discogsData };
+    }));
 
-    // 5. Process eBay Active Matches (Advanced Multi-Pattern Scraper)
-    let ebayActiveMatches = [];
-    const ebayLinks = visualMatches.filter(m => m.link && m.link.toLowerCase().includes('ebay.com')).slice(0, 5);
-    
-    for (let m of ebayLinks) {
+    // TASK 2: EBAY ACTIVE HTML SCRAPERS
+    const ebayActiveTask = Promise.all(ebayLinks.map(async (m) => {
         let price = m.price?.raw || (m.price?.extracted_value ? `$${m.price.extracted_value}` : null);
         
-        // Force scrape if price is missing OR if it's a mobile link
         if (!price || m.link.includes('ebay.io')) {
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 2000); 
-                // Using standard browser headers helps prevent eBay from serving an empty mobile shell
+                const timeoutId = setTimeout(() => controller.abort(), 1200); 
                 const res = await fetch(m.link, { headers: botHeaders, signal: controller.signal });
                 clearTimeout(timeoutId);
                 const html = await res.text();
                 
-                // 1. Meta Tag (Most reliable for Buy It Now)
                 const metaPrice = html.match(/itemprop="price" content="([^"]+)"/i);
                 if (metaPrice) {
-                    price = `$${metaPrice[1]}`;
+                    const cur = html.match(/itemprop="priceCurrency" content="([^"]+)"/i);
+                    price = cur ? `${cur[1]} ${metaPrice[1]}` : `$${metaPrice[1]}`;
                 } else {
-                    // 2. Fallback Regex patterns for Auctions, Mobile layouts, and UK/Canada currencies
-                    const mobileMatch = html.match(/class="main-price-with-shipping"[^>]*>\s*([A-Z£€]*\s*\$?\s*[\d,.]+)/i);
-                    const bidMatch = html.match(/id="prcIsum_bidPrice"[^>]*>\s*([A-Z£€]*\s*\$?\s*[\d,.]+)/i);
-                    const standardMatch = html.match(/class="ux-textspans ux-textspans--BOLD"[^>]*>\s*([A-Z£€]*\s*\$?\s*[\d,.]+)\s*<\/span>/i);
-                    
-                    const found = mobileMatch || bidMatch || standardMatch;
-                    if (found) price = found[1].trim();
+                    const backupMatch = html.match(/class="ux-textspans ux-textspans--BOLD"[^>]*>\s*([A-Z£€]*\s*\$?\s*[\d,.]+)\s*<\/span>/i) ||
+                                      html.match(/id="prcIsum_bidPrice"[^>]*>\s*([A-Z£€]*\s*\$?\s*[\d,.]+)/i) ||
+                                      html.match(/class="main-price-with-shipping"[^>]*>\s*([A-Z£€]*\s*\$?\s*[\d,.]+)/i);
+                    if (backupMatch) price = backupMatch[1].trim();
                 }
             } catch(e) {}
         }
-        ebayActiveMatches.push({ title: m.title, link: m.link, thumbnail: m.thumbnail, price });
-    }
+        return { title: m.title, link: m.link, thumbnail: m.thumbnail, price };
+    }));
 
-    // 6. Fetch eBay Sold
-    let ebaySoldResults = [];
-    try {
-        const soldUrl = `https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(textQuery)}&LH_Sold=1&LH_Complete=1&api_key=${serpapiKey}`;
-        const soldRes = await fetch(soldUrl);
-        const soldJson = await soldRes.json();
-        if (soldJson.organic_results) {
-            ebaySoldResults = soldJson.organic_results.slice(0, 10).map(item => ({
-                title: item.title, link: item.link, price: item.price?.raw || null, condition: item.condition || ""
-            }));
-        }
-    } catch(e) {}
+    // TASK 3: EBAY SOLD SERPAPI
+    const ebaySoldTask = (async () => {
+        let results = [];
+        try {
+            const soldUrl = `https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(textQuery)}&LH_Sold=1&LH_Complete=1&api_key=${serpapiKey}`;
+            const soldRes = await fetch(soldUrl);
+            const soldJson = await soldRes.json();
+            if (soldJson.organic_results) {
+                results = soldJson.organic_results.slice(0, 10).map(item => ({
+                    title: item.title, link: item.link, price: item.price?.raw || null, condition: item.condition || ""
+                }));
+            }
+        } catch(e) {}
+        return results;
+    })();
+
+    // RESOLVE ALL 3 TASKS SIMULTANEOUSLY
+    const [discogsMatches, ebayActiveMatches, ebaySoldResults] = await Promise.all([
+        discogsTask, 
+        ebayActiveTask, 
+        ebaySoldTask
+    ]);
 
     return NextResponse.json({ discogsMatches, ebayActiveMatches, ebaySoldResults, textQuery });
     
