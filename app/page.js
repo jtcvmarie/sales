@@ -100,7 +100,7 @@ export default function Home() {
     }
   };
 
-  const handleSoldSearch = async () => {
+  const handleSoldSearch = async (isSync = false) => {
     if (!soldQuery.trim()) return;
     setLoadingSold(true);
     setSoldNotice(null);
@@ -108,6 +108,7 @@ export default function Home() {
     try {
       const formData = new FormData();
       formData.append('soldQuery', soldQuery);
+      if (isSync) formData.append('syncMode', 'true');
       
       const res = await fetch('/api/search', { method: 'POST', body: formData });
       if (!res.ok) throw new Error(`Server returned status ${res.status}`);
@@ -130,7 +131,7 @@ export default function Home() {
 
   return (
     <main style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto', backgroundColor: '#fff', paddingBottom: '100px' }}>
-      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V36</h2>
+      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V37</h2>
       
       <input type="file" accept="image/*" capture="environment" onChange={handleCapture} style={{ padding: '10px', fontSize: '16px', marginBottom: '12px', width: '100%', backgroundColor: '#f9f9f9', border: '1px solid #ccc', borderRadius: '5px' }} />
       
@@ -250,20 +251,28 @@ export default function Home() {
 
           <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: '#fcf2f2', borderRadius: '6px', border: '1px solid #f5c6cb' }}>
             <p style={{ margin: '0 0 6px 0', fontSize: '12px', color: '#721c24', fontWeight: 'bold' }}>Edit Sold Search Query:</p>
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               <input 
                 type="text" 
                 value={soldQuery} 
                 onChange={(e) => setSoldQuery(e.target.value)} 
                 placeholder="Custom eBay sold query..."
-                style={{ flex: 1, padding: '10px', fontSize: '14px', borderRadius: '4px', border: '1px solid #d9534f' }}
+                style={{ flex: '1 1 100%', padding: '10px', fontSize: '14px', borderRadius: '4px', border: '1px solid #d9534f' }}
               />
               <button 
-                onClick={handleSoldSearch}
+                onClick={() => handleSoldSearch(false)}
                 disabled={loadingSold}
-                style={{ padding: '10px 14px', backgroundColor: '#8b0000', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', whiteSpace: 'nowrap' }}
+                style={{ flex: 1, padding: '10px 14px', backgroundColor: '#8b0000', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', whiteSpace: 'nowrap' }}
               >
                 {loadingSold ? "Searching..." : "Search Sold"}
+              </button>
+              {/* THE NEW SYNC BUTTON */}
+              <button 
+                onClick={() => handleSoldSearch(true)}
+                disabled={loadingSold}
+                style={{ flex: 1, padding: '10px 14px', backgroundColor: '#0064d2', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', whiteSpace: 'nowrap' }}
+              >
+                {loadingSold ? "Syncing..." : "Sync / Resync"}
               </button>
             </div>
           </div>
