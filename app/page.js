@@ -68,7 +68,7 @@ export default function Home() {
       
       <input type="file" accept="image/*" capture="environment" onChange={handleCapture} style={{ padding: '10px', fontSize: '16px', marginBottom: '15px', width: '100%', backgroundColor: '#f9f9f9', border: '1px solid #ccc', borderRadius: '5px' }} />
       
-      {loading && <p style={{ fontWeight: 'bold', color: '#0070f3' }}>Scanning artwork & fetching market data...</p>}
+      {loading && <p style={{ fontWeight: 'bold', color: '#0070f3' }}>Scanning artwork & breaking through firewalls...</p>}
       {errorMsg && <p style={{ color: 'red', fontWeight: 'bold', backgroundColor: '#fee', padding: '10px', borderRadius: '4px' }}>{errorMsg}</p>}
       
       {/* 1. DISCOGS SECTION */}
@@ -107,14 +107,9 @@ export default function Home() {
                   </div>
                   
                   {/* ERROR OUTPUT */}
-                  {dData.debug && !dData.debug.includes("SUCCESS") && (
-                     <div style={{ color: '#d93025', fontSize: '11px', marginTop: '10px', fontWeight: 'bold', padding: '8px', backgroundColor: '#ffe6e6', borderRadius: '4px' }}>
-                        API DIAGNOSTIC: {dData.debug}
-                     </div>
-                  )}
-                  {dData.debug && dData.debug.includes("0 Historical") && (
-                     <div style={{ color: '#0056b3', fontSize: '11px', marginTop: '10px', fontWeight: 'bold', padding: '8px', backgroundColor: '#e6f0ff', borderRadius: '4px' }}>
-                        Note: Discogs has 0 historical sales data for this exact pressing.
+                  {dData.debug && (
+                     <div style={{ color: dData.debug.includes("SUCCESS") ? 'green' : '#d93025', fontSize: '11px', marginTop: '10px', fontWeight: 'bold', padding: '8px', backgroundColor: dData.debug.includes("SUCCESS") ? '#e6ffe6' : '#ffe6e6', borderRadius: '4px' }}>
+                        DATA SOURCE: {dData.debug}
                      </div>
                   )}
                 </div>
@@ -141,6 +136,7 @@ export default function Home() {
                   <div style={{ flex: 1 }}>
                     <a href={item.link} target="_blank" rel="noreferrer" style={{ display: 'block', fontWeight: 'bold', fontSize: '14px', marginBottom: '5px' }}>{item.title}</a>
                     
+                    {/* Note: Lens does not always scrape prices from category pages. This is normal. */}
                     <div style={{ fontWeight: 'bold', color: item.price ? 'green' : '#666', fontSize: '16px', marginBottom: '3px' }}>
                       {item.price || "View on eBay"}
                     </div>
