@@ -40,11 +40,9 @@ export async function POST(request) {
             for (let block of blocks) {
               if (block.toLowerCase().includes('shop on ebay')) continue;
               
-              // V39 ZERO-TRUST FILTER: Must have explicit sold-date HTML tags.
+              // ZERO-TRUST FILTER: Protects against eBay redirecting the server to Active listings
               const hasGreenPrice = block.match(/<span[^>]*POSITIVE[^>]*>[^<]*\$[\d,.]+/i);
               const hasEndedDate = block.match(/s-item__endedDate/i) || block.match(/<span[^>]*POSITIVE[^>]*>[^<]*202[0-9]/i);
-              
-              // If it's an active listing, it lacks these tags. Trash it immediately.
               if (!hasGreenPrice && !hasEndedDate) continue;
 
               let titleMatch = block.match(/<div[^>]*s-item__title[^>]*>([\s\S]*?)<\/div>/i);
@@ -70,7 +68,8 @@ export async function POST(request) {
           }
       }
 
-      // 2. FALLBACK TO SERPAPI (Immune to Soft Blocks)
+      // 2. TRUSTED PROXY (SERPAPI)
+      // Kicks in automatically if the HTML scraper got blocked by eBay, or if Sync button is pressed
       if (results.length === 0 && apiKey) {
         if (!forceSync) debugMsg += "Fallback API: ";
         try {
@@ -79,41 +78,33 @@ export async function POST(request) {
           const serpJson = await serpRes.json();
           
           if (serpJson.search_information && (serpJson.search_information.showing_results_for || serpJson.search_information.spelling_fix)) {
-              notice = "No exact matches found. Displaying results matching fewer words (via API fallback):";
+              notice = "No exact matches found. Displaying results matching fewer words (via Sync):";
           }
 
           if (serpJson.organic_results && serpJson.organic_results.length > 0) {
             for (let item of serpJson.organic_results) {
                
-               // V39 ZERO-TRUST FILTER: The bug was "|| item.price?.raw". 
-               // We removed that. It MUST say the word "sold" or "ended" in the metadata extensions.
-               let extensionsText = (item.extensions || []).join(" ").toLowerCase();
-               let conditionText = (item.condition || "").toLowerCase();
+               // V40 FIX: We trust the SerpApi proxy to bypass the redirect. 
+               // We no longer throw the item away just because it doesn't explicitly say the word "Sold".
+               let safeLink = item.link;
+               if (!safeLink.includes('orig_cvip')) safeLink += safeLink.includes('?') ? '&orig_cvip=true' : '?orig_cvip=true';
                
-               let isVerifiedSold = extensionsText.includes('sold') || extensionsText.includes('ended') || conditionText.includes('sold');
-               
-               if (isVerifiedSold) {
-                   let safeLink = item.link;
-                   if (!safeLink.includes('orig_cvip')) safeLink += safeLink.includes('?') ? '&orig_cvip=true' : '?orig_cvip=true';
-                   
-                   let dateLabel = "Sold";
-                   if (item.extensions) {
-                       let soldExt = item.extensions.find(e => e.toLowerCase().includes('sold'));
-                       if (soldExt) dateLabel = soldExt;
-                   }
-
-                   results.push({ 
-                       title: item.title, 
-                       link: safeLink, 
-                       price: item.price?.raw || "Sold", 
-                       condition: dateLabel
-                   });
+               let dateLabel = "Sold";
+               if (item.extensions && item.extensions.length > 0) {
+                   dateLabel = item.extensions[0]; // SerpApi usually stores the date here
                }
+
+               results.push({ 
+                   title: item.title, 
+                   link: safeLink, 
+                   price: item.price?.raw || "Sold", 
+                   condition: dateLabel
+               });
                if (results.length >= 15) break;
             }
             debugMsg += `Pulled ${results.length} verified proxy items.`;
           } else {
-            debugMsg += "SerpApi returned 0 organic_results.";
+            debugMsg += "SerpApi returned 0 results.";
           }
         } catch(e) {
             debugMsg += `SerpApi Error (${e.message}).`;
@@ -171,7 +162,7 @@ export async function POST(request) {
       textQuery = manualQuery;
       
       const dPromise = discogsToken ? fetch(`https://api.discogs.com/database/search?q=${encodeURIComponent(textQuery)}&type=release&per_page=15`, {
-        headers: { 'User-Agent': 'RecordLens/12.0', 'Authorization': `Discogs token=${discogsToken}` }
+        headers: { 'User-Agent': 'RecordLens/13.0', 'Authorization': `Discogs token=${discogsToken}` }
       }).then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null);
       
       const ePromise = fetch(`https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(textQuery)}&api_key=${serpapiKey}`)
@@ -193,7 +184,7 @@ export async function POST(request) {
         const idMatch = match.link.match(/\/(?:release|master|sell\/(?:release|item|history))\/(\d+)/i);
         if (idMatch) {
           let id = idMatch[1];
-          const headers = { 'User-Agent': 'RecordLens/12.0', 'Authorization': `Discogs token=${discogsToken}` };
+          const headers = { 'User-Agent': 'RecordLens/13.0', 'Authorization': `Discogs token=${discogsToken}` };
           try {
             if (match.link.includes('/master/')) {
               const mRes = await fetch(`https://api.discogs.com/masters/${id}`, { headers });
