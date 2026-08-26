@@ -15,38 +15,77 @@ export async function POST(request) {
     };
 
     // ==========================================
-    // HELPER: SerpApi eBay Sold Fetcher
+    // HELPER: Indestructible eBay Sold Scraper
     // ==========================================
     async function fetchEbaySold(queryStr, apiKey) {
-      if (!queryStr || !queryStr.trim()) return { results: [], notice: null };
+      if (!queryStr || !queryStr.trim()) return { results: [], notice: null, debug: "Empty query provided." };
       let results = [];
       let notice = null;
+      let debugMsg = "HTML Scraper: ";
 
       try {
-        // By using SerpApi's specific "show_only=Sold" parameter, we bypass eBay's 
-        // bot detection that was aggressively redirecting us to active listings.
-        const serpUrl = `https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(queryStr)}&show_only=Sold&api_key=${apiKey}`;
-        const serpRes = await fetch(serpUrl);
-        const serpJson = await serpRes.json();
+        const soldUrl = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(queryStr)}&LH_Sold=1&LH_Complete=1`;
+        const res = await fetch(soldUrl, { headers: botHeaders });
+        const html = await res.text();
         
-        // Check if eBay forced a "fewer words" or auto-corrected search
-        if (serpJson.search_information && (serpJson.search_information.showing_results_for || serpJson.search_information.spelling_fix)) {
-            notice = "No exact matches found. Displaying results for fewer words:";
+        if (html.match(/Matching fewer words/i) || html.match(/removed some search terms/i) || html.match(/No exact matches found/i)) {
+            notice = "No exact matches found. Displaying results matching fewer words:";
         }
 
-        if (serpJson.organic_results) {
-            results = serpJson.organic_results.slice(0, 15).map(item => ({
-              title: item.title, 
-              link: item.link, 
-              price: item.price?.raw || null, 
-              condition: item.condition || "Sold"
-            }));
+        const blocks = html.split(/class="[^"]*s-item__info[^"]*"/i).slice(1);
+        
+        for (let block of blocks) {
+          if (block.toLowerCase().includes('shop on ebay')) continue;
+          
+          let titleMatch = block.match(/<div[^>]*s-item__title[^>]*>([\s\S]*?)<\/div>/i);
+          if (!titleMatch) continue;
+          let title = titleMatch[1].replace(/<[^>]+>/g, '').replace(/New Listing/i, '').trim();
+
+          let linkMatch = block.match(/href="([^"]+)"/i);
+          let link = linkMatch ? linkMatch[1].split('?')[0] : "";
+
+          let priceMatch = block.match(/<span[^>]*s-item__price[^>]*>([\s\S]*?)<\/span>/i);
+          let price = priceMatch ? priceMatch[1].replace(/<[^>]+>/g, '').trim() : "";
+
+          let dateMatch = block.match(/<div[^>]*s-item__title--tag[^>]*>([\s\S]*?)<\/div>/i) || 
+                          block.match(/<div[^>]*s-item__caption--tag[^>]*>([\s\S]*?)<\/div>/i) || 
+                          block.match(/<span[^>]*POSITIVE[^>]*>([\s\S]*?)<\/span>/i);
+          let date = dateMatch ? dateMatch[1].replace(/<[^>]+>/g, '').trim() : "Sold";
+
+          if (title && link) results.push({ title, link, price, condition: date });
+          if (results.length >= 15) break;
         }
-      } catch(e) {
-          console.error("SerpApi Sold Fetch Error:", e);
+        debugMsg += `Found ${results.length} items. `;
+      } catch (e) {
+        debugMsg += `Error (${e.message}). `;
       }
 
-      return { results, notice };
+      // FALLBACK TO SERPAPI IF BLOCKED BY CAPTCHA
+      if (results.length === 0 && apiKey) {
+        debugMsg += "Fallback API: ";
+        try {
+          const serpUrl = `https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(queryStr)}&LH_Sold=1&LH_Complete=1&api_key=${apiKey}`;
+          const serpRes = await fetch(serpUrl);
+          const serpJson = await serpRes.json();
+          
+          if (serpJson.search_information && (serpJson.search_information.showing_results_for || serpJson.search_information.spelling_fix)) {
+              notice = "No exact matches found. Displaying results matching fewer words (via API fallback):";
+          }
+
+          if (serpJson.organic_results && serpJson.organic_results.length > 0) {
+            results = serpJson.organic_results.slice(0, 15).map(item => ({
+              title: item.title, link: item.link, price: item.price?.raw || null, condition: item.condition || "Sold"
+            }));
+            debugMsg += `Found ${results.length} items.`;
+          } else {
+            debugMsg += "0 items found.";
+          }
+        } catch(e) {
+            debugMsg += `Error (${e.message}).`;
+        }
+      }
+
+      return { results, notice, debug: debugMsg };
     }
 
     // ==========================================
@@ -54,7 +93,11 @@ export async function POST(request) {
     // ==========================================
     if (soldOnlyQuery) {
       const soldData = await fetchEbaySold(soldOnlyQuery, serpapiKey);
-      return NextResponse.json({ ebaySoldResults: soldData.results, soldNotice: soldData.notice });
+      return NextResponse.json({ 
+          ebaySoldResults: soldData.results, 
+          soldNotice: soldData.notice,
+          soldDebug: soldData.debug 
+      });
     }
 
     if (!serpapiKey) return NextResponse.json({ error: "Missing SERPAPI_KEY" }, { status: 500 });
@@ -86,38 +129,33 @@ export async function POST(request) {
       ebayLinks = visualMatches.filter(m => m.link && m.link.toLowerCase().includes('ebay.com')).slice(0, 6);
     } 
     // ==========================================
-    // ROUTE 3: Manual Text Search (Discogs + eBay)
+    // ROUTE 3: Manual Text Search (MAX CONCURRENCY)
     // ==========================================
     else if (manualQuery) {
       textQuery = manualQuery;
       
-      if (discogsToken) {
-        try {
-          const dRes = await fetch(`https://api.discogs.com/database/search?q=${encodeURIComponent(textQuery)}&type=release&per_page=15`, {
-            headers: { 'User-Agent': 'RecordLens/7.0', 'Authorization': `Discogs token=${discogsToken}` }
-          });
-          if (dRes.ok) {
-            const dJson = await dRes.json();
-            discogsLinks = (dJson.results || []).map(r => ({ link: `https://www.discogs.com/release/${r.id}`, title: r.title, thumbnail: r.thumb }));
-          }
-        } catch (e) {}
-      }
+      // Fire Discogs & eBay searches simultaneously
+      const dPromise = discogsToken ? fetch(`https://api.discogs.com/database/search?q=${encodeURIComponent(textQuery)}&type=release&per_page=15`, {
+        headers: { 'User-Agent': 'RecordLens/8.0', 'Authorization': `Discogs token=${discogsToken}` }
+      }).then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null);
       
-      try {
-        const eRes = await fetch(`https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(textQuery)}&api_key=${serpapiKey}`);
-        if (eRes.ok) {
-          const eJson = await eRes.json();
-          if (eJson.organic_results) {
-            ebayLinks = eJson.organic_results.slice(0, 6).map(r => ({ link: r.link, title: r.title, thumbnail: r.thumbnail, price: { raw: r.price?.raw } }));
-          }
-        }
-      } catch (e) {}
+      const ePromise = fetch(`https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(textQuery)}&api_key=${serpapiKey}`)
+        .then(r => r.ok ? r.json() : null).catch(() => null);
+
+      const [dJson, eJson] = await Promise.all([dPromise, ePromise]);
+
+      if (dJson && dJson.results) {
+        discogsLinks = dJson.results.map(r => ({ link: `https://www.discogs.com/release/${r.id}`, title: r.title, thumbnail: r.thumb }));
+      }
+      if (eJson && eJson.organic_results) {
+        ebayLinks = eJson.organic_results.slice(0, 6).map(r => ({ link: r.link, title: r.title, thumbnail: r.thumbnail, price: { raw: r.price?.raw } }));
+      }
     } else {
-      return NextResponse.json({ error: "No query provided" }, { status: 400 });
+      return NextResponse.json({ error: "No image or query provided" }, { status: 400 });
     }
 
     // ==========================================
-    // Concurrent Data Fetching
+    // SIMULTANEOUS DATA PROCESSING (Tasks 1, 2, & 3)
     // ==========================================
 
     const discogsTask = Promise.all(discogsLinks.map(async (match) => {
@@ -126,7 +164,7 @@ export async function POST(request) {
         const idMatch = match.link.match(/\/(?:release|master|sell\/(?:release|item|history))\/(\d+)/i);
         if (idMatch) {
           let id = idMatch[1];
-          const headers = { 'User-Agent': 'RecordLens/7.0', 'Authorization': `Discogs token=${discogsToken}` };
+          const headers = { 'User-Agent': 'RecordLens/8.0', 'Authorization': `Discogs token=${discogsToken}` };
           try {
             if (match.link.includes('/master/')) {
               const mRes = await fetch(`https://api.discogs.com/masters/${id}`, { headers });
@@ -176,6 +214,7 @@ export async function POST(request) {
         ebayActiveMatches, 
         ebaySoldResults: soldData.results, 
         soldNotice: soldData.notice,
+        soldDebug: soldData.debug,
         textQuery 
     });
     
