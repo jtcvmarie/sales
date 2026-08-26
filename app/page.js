@@ -4,13 +4,8 @@ import { useState } from 'react';
 export default function Home() {
   const [discogs, setDiscogs] = useState([]);
   const [ebayActive, setEbayActive] = useState([]);
-  
-  // Sold Search States
-  const [editableQuery, setEditableQuery] = useState("");
   const [ebaySold, setEbaySold] = useState([]);
-  const [soldSearched, setSoldSearched] = useState(false);
-  const [soldLoading, setSoldLoading] = useState(false);
-  
+  const [searchString, setSearchString] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [hasSearched, setHasSearched] = useState(false);
@@ -29,22 +24,19 @@ export default function Home() {
     });
   };
 
+  // Triggered when taking a photo
   const handleCapture = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     
     setLoading(true); 
     setErrorMsg(""); 
-    setDiscogs([]); 
-    setEbayActive([]);
-    setEbaySold([]); 
-    setEditableQuery(""); 
     setHasSearched(false);
-    setSoldSearched(false);
     
     try {
       const smallFile = await shrinkImage(file);
-      const formData = new FormData(); formData.append('image', smallFile);
+      const formData = new FormData(); 
+      formData.append('image', smallFile);
       
       const res = await fetch('/api/search', { method: 'POST', body: formData });
       if (!res.ok) throw new Error(`Server returned status ${res.status}`);
@@ -52,9 +44,10 @@ export default function Home() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       
-      setDiscogs(Array.isArray(data.discogsMatches) ? data.discogsMatches : []);
-      setEbayActive(Array.isArray(data.ebayActiveMatches) ? data.ebayActiveMatches : []);
-      setEditableQuery(data.textQuery || "");
+      setDiscogs(data.discogsMatches || []);
+      setEbayActive(data.ebayActiveMatches || []);
+      setEbaySold(data.ebaySoldResults || []);
+      setSearchString(data.textQuery || "");
       setHasSearched(true);
       
     } catch (error) { 
@@ -64,42 +57,63 @@ export default function Home() {
     }
   };
 
-  // Dedicated function for the Sold button
-  const handleSoldSearch = async () => {
-      if (!editableQuery.trim()) return;
-      setSoldLoading(true);
-      setSoldSearched(false);
-      setEbaySold([]);
+  // Triggered when editing the text box and hitting Search
+  const handleTextSearch = async () => {
+    if (!searchString.trim()) return;
+    
+    setLoading(true);
+    setErrorMsg("");
+    setHasSearched(false);
+
+    try {
+      const formData = new FormData();
+      formData.append('query', searchString);
       
-      try {
-          const res = await fetch('/api/sold', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ query: editableQuery })
-          });
-          
-          if (!res.ok) throw new Error(`Server returned status ${res.status}`);
-          const data = await res.json();
-          if (data.error) throw new Error(data.error);
-          
-          setEbaySold(Array.isArray(data.results) ? data.results : []);
-          setSoldSearched(true);
-      } catch (error) {
-          alert("Sold Search Error: " + error.message);
-      } finally {
-          setSoldLoading(false);
-      }
+      const res = await fetch('/api/search', { method: 'POST', body: formData });
+      if (!res.ok) throw new Error(`Server returned status ${res.status}`);
+      
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      
+      setDiscogs(data.discogsMatches || []);
+      setEbayActive(data.ebayActiveMatches || []);
+      setEbaySold(data.ebaySoldResults || []);
+      setSearchString(data.textQuery || searchString);
+      setHasSearched(true);
+    } catch (error) {
+      setErrorMsg("Error: " + error.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const ebaySoldDirectUrl = editableQuery ? `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(editableQuery)}&_sacat=0&_from=R40&rt=nc&LH_Sold=1` : '#';
+  const ebaySoldDirectUrl = searchString ? `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(searchString)}&_sacat=0&_from=R40&rt=nc&LH_Sold=1` : '#';
 
   return (
     <main style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto', backgroundColor: '#fff', paddingBottom: '100px' }}>
-      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V29</h2>
+      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V30</h2>
       
       <input type="file" accept="image/*" capture="environment" onChange={handleCapture} style={{ padding: '10px', fontSize: '16px', marginBottom: '15px', width: '100%', backgroundColor: '#f9f9f9', border: '1px solid #ccc', borderRadius: '5px' }} />
       
-      {loading && <p style={{ fontWeight: 'bold', color: '#0070f3' }}>Scanning artwork & active markets...</p>}
+      {/* GLOBAL SEARCH BAR */}
+      <div style={{ marginBottom: '20px', display: 'flex', gap: '8px' }}>
+         <input 
+            type="text" 
+            value={searchString} 
+            onChange={(e) => setSearchString(e.target.value)} 
+            placeholder="Edit search query..."
+            style={{ flex: 1, padding: '10px', fontSize: '15px', borderRadius: '4px', border: '1px solid #aaa' }}
+         />
+         <button 
+            onClick={handleTextSearch}
+            disabled={loading}
+            style={{ padding: '10px 15px', backgroundColor: '#333', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}
+         >
+            Search
+         </button>
+      </div>
+
+      {loading && <p style={{ fontWeight: 'bold', color: '#0070f3' }}>Scanning markets & updating databases...</p>}
       {errorMsg && <p style={{ color: 'red', fontWeight: 'bold', backgroundColor: '#fee', padding: '10px', borderRadius: '4px' }}>{errorMsg}</p>}
       
       {/* 1. DISCOGS SECTION */}
@@ -109,11 +123,11 @@ export default function Home() {
           
           {discogs.length === 0 ? (
             <div style={{ padding: '15px', backgroundColor: '#fafafa', border: '1px solid #ddd', borderRadius: '6px' }}>
-               <p style={{ margin: 0, fontSize: '14px', color: '#555' }}>Google Lens found 0 Discogs links for this image.</p>
+               <p style={{ margin: 0, fontSize: '14px', color: '#555' }}>0 Discogs matches found for this query.</p>
             </div>
           ) : (
             discogs.map((item, i) => {
-              const dData = item.discogsData || { have:'--', want:'--', rating:'--', ratingsCount:'--', low:'--', high:'--' };
+              const dData = item.discogsData || { have:'--', want:'--', rating:'--', ratingsCount:'--', activeLow:'--', histLow:'--', histMed:'--', histHigh:'--' };
               
               return (
                 <div key={i} style={{ marginBottom: '20px', borderBottom: '2px solid #eee', paddingBottom: '20px' }}>
@@ -130,8 +144,11 @@ export default function Home() {
                     <div><span style={{color: 'gray'}}>Want:</span> <strong>{dData.want}</strong></div>
                     <div><span style={{color: 'gray'}}>Avg Rating:</span> <strong>{dData.rating}</strong></div>
                     <div><span style={{color: 'gray'}}>Ratings:</span> <strong>{dData.ratingsCount}</strong></div>
-                    <div><span style={{color: 'gray'}}>Active Low:</span> <strong style={{color: 'green'}}>{dData.low}</strong></div>
-                    <div><span style={{color: 'gray'}}>Active High:</span> <strong style={{color: '#8b0000'}}>{dData.high}</strong></div>
+                    <div style={{gridColumn: '1 / -1', borderBottom: '1px solid #ddd', paddingBottom: '4px', marginTop: '4px', color: '#666', fontWeight: 'bold'}}>Pricing Specs</div>
+                    <div><span style={{color: 'gray'}}>Active Low:</span> <strong style={{color: 'green'}}>{dData.activeLow}</strong></div>
+                    <div><span style={{color: 'gray'}}>Hist. Low:</span> <strong>{dData.histLow}</strong></div>
+                    <div><span style={{color: 'gray'}}>Hist. Median:</span> <strong>{dData.histMed}</strong></div>
+                    <div><span style={{color: 'gray'}}>Hist. High:</span> <strong style={{color: '#8b0000'}}>{dData.histHigh}</strong></div>
                   </div>
                 </div>
               )
@@ -147,7 +164,7 @@ export default function Home() {
           
           {ebayActive.length === 0 ? (
              <div style={{ padding: '15px', backgroundColor: '#fafafa', border: '1px solid #ddd', borderRadius: '6px' }}>
-               <p style={{ margin: 0, fontSize: '14px', color: '#555' }}>Google Lens found 0 active eBay links.</p>
+               <p style={{ margin: 0, fontSize: '14px', color: '#555' }}>0 active eBay links found.</p>
             </div>
           ) : (
             ebayActive.map((item, i) => (
@@ -167,42 +184,22 @@ export default function Home() {
         </div>
       )}
 
-      {/* 3. EBAY SOLD EDITABLE WORKFLOW */}
+      {/* 3. EBAY SOLD SECTION */}
       {hasSearched && (
         <div style={{ marginBottom: '40px', borderTop: '4px solid #8b0000', paddingTop: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
             <h3 style={{ margin: 0, color: '#8b0000' }}>eBay Sold History</h3>
             <a href={ebaySoldDirectUrl} target="_blank" rel="noreferrer" style={{ fontSize: '13px', color: '#0064d2', textDecoration: 'none', fontWeight: 'bold', border: '1px solid #0064d2', padding: '5px 10px', borderRadius: '4px' }}>
-              View URL →
+              View All Sold →
             </a>
           </div>
 
-          {/* EDITABLE QUERY BOX */}
-          <div style={{ marginBottom: '20px', padding: '15px', backgroundColor: '#eef2f5', borderRadius: '8px', border: '1px solid #cddde6' }}>
-              <p style={{ margin: '0 0 8px 0', fontSize: '13px', color: '#555', fontWeight: 'bold' }}>Edit 10-Word Search String:</p>
-              <input 
-                  type="text" 
-                  value={editableQuery} 
-                  onChange={(e) => setEditableQuery(e.target.value)} 
-                  style={{ width: '100%', padding: '10px', fontSize: '15px', borderRadius: '4px', border: '1px solid #aaa', marginBottom: '10px', boxSizing: 'border-box' }}
-              />
-              <button 
-                  onClick={handleSoldSearch}
-                  disabled={soldLoading}
-                  style={{ width: '100%', padding: '12px', backgroundColor: '#8b0000', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', fontSize: '16px' }}
-              >
-                  {soldLoading ? "Searching Sold Listings..." : "Search Sold Listings"}
-              </button>
-          </div>
-          
-          {/* RENDER SOLD RESULTS */}
-          {soldSearched && ebaySold.length === 0 && (
+          {ebaySold.length === 0 ? (
              <div style={{ padding: '20px', backgroundColor: '#fff5f5', border: '1px solid #fcdcdc', borderRadius: '6px', textAlign: 'center' }}>
                <p style={{ fontSize: '14px', color: '#8b0000', margin: 0, fontWeight: 'bold' }}>No Sold Results Found.</p>
             </div>
-          )}
-
-          {soldSearched && ebaySold.length > 0 && ebaySold.map((item, i) => (
+          ) : (
+            ebaySold.map((item, i) => (
               <div key={i} style={{ marginBottom: '12px', padding: '12px', backgroundColor: '#fff5f5', borderRadius: '6px', border: '1px solid #fcdcdc' }}>
                 <a href={item.link} target="_blank" rel="noreferrer" style={{ display: 'block', fontSize: '14px', marginBottom: '8px', color: '#333', textDecoration: 'none' }}>{item.title}</a>
                 <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -211,7 +208,8 @@ export default function Home() {
                   {item.condition && <span style={{ fontSize: '12px', color: 'gray', marginLeft: 'auto' }}>{item.condition}</span>}
                 </div>
               </div>
-          ))}
+            ))
+          )}
         </div>
       )}
 
