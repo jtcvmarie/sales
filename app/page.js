@@ -99,9 +99,9 @@ export default function Home() {
     }
   };
 
-  // Custom Colorizer for Deep Media Formats
+  // STRICT CRASH-PROOF COLORIZER
   const renderFormat = (fmtStr) => {
-    if (!fmtStr || fmtStr === '--') return '--';
+    if (!fmtStr || typeof fmtStr !== 'string' || fmtStr === '--') return '--';
     const formatKeywords = ['vinyl', 'lp', '45', '78', '33', 'shellac', 'cassette', '7"', '10"', '12"', 'cd'];
     const parts = fmtStr.split(', ');
     
@@ -122,7 +122,7 @@ export default function Home() {
 
   return (
     <main style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto', backgroundColor: '#fff', paddingBottom: '100px' }}>
-      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '15px' }}>Record Lens V45</h2>
+      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '15px' }}>Record Lens V46</h2>
       
       <input type="file" accept="image/*" capture="environment" onChange={handleCapture} style={{ padding: '10px', fontSize: '16px', marginBottom: '15px', width: '100%', backgroundColor: '#f9f9f9', border: '1px solid #ccc', borderRadius: '5px' }} />
       
@@ -196,7 +196,7 @@ export default function Home() {
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                         {/* Title strictly left-aligned */}
                         <a href={item.link} target="_blank" rel="noreferrer" style={{ display: 'block', textAlign: 'left', fontWeight: 'bold', fontSize: '14px', marginBottom: '8px', color: '#0056b3', textDecoration: 'none', whiteSpace: 'normal', wordBreak: 'break-word' }}>
-                          {item.title}
+                          {String(item.title || "")}
                         </a>
                         
                         {/* Plumped up, Centered Badges */}
@@ -227,13 +227,13 @@ export default function Home() {
                       {/* GUARANTEED SINGLE LINE METADATA */}
                       <div style={{ display: 'flex', gap: '15px', flexWrap: 'nowrap', overflow: 'hidden', whiteSpace: 'nowrap', textAlign: 'left' }}>
                         {dData.label && dData.label !== '--' && (
-                          <div><span style={{ color: '#4527a0', fontWeight: 'bold' }}>Label:</span> {dData.label}</div>
+                          <div><span style={{ color: '#4527a0', fontWeight: 'bold' }}>Label:</span> {String(dData.label)}</div>
                         )}
                         {dData.country && dData.country !== '--' && (
-                          <div><span style={{ color: '#4527a0', fontWeight: 'bold' }}>Country:</span> {dData.country}</div>
+                          <div><span style={{ color: '#4527a0', fontWeight: 'bold' }}>Country:</span> {String(dData.country)}</div>
                         )}
                         {dData.released && dData.released !== '--' && (
-                          <div><span style={{ color: '#4527a0', fontWeight: 'bold' }}>Released:</span> {dData.released}</div>
+                          <div><span style={{ color: '#4527a0', fontWeight: 'bold' }}>Released:</span> {String(dData.released)}</div>
                         )}
                       </div>
                     </div>
@@ -278,15 +278,15 @@ export default function Home() {
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                       {/* Left-Aligned Title */}
                       <a href={item.link} target="_blank" rel="noreferrer" style={{ display: 'block', textAlign: 'left', fontWeight: 'bold', fontSize: '14px', marginBottom: '6px', textDecoration: 'none', color: '#333', whiteSpace: 'normal', wordBreak: 'break-word' }}>
-                        {item.title}
+                        {String(item.title || "")}
                       </a>
                       
                       {/* Centered Price & Shipping */}
                       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', marginTop: 'auto', marginBottom: '2px' }}>
                         <span style={{ fontWeight: 'bold', color: item.price ? 'green' : '#666', fontSize: '15px' }}>
-                          {item.price || "View on eBay"}
+                          {typeof item.price === 'string' && item.price ? item.price : "View on eBay"}
                         </span>
-                        {item.shipping && (
+                        {typeof item.shipping === 'string' && item.shipping && (
                           <span style={{ fontSize: '12px', color: '#777' }}>{item.shipping}</span>
                         )}
                       </div>
