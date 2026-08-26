@@ -48,7 +48,7 @@ export async function POST(request) {
       textQuery = manualQuery;
       
       const dPromise = discogsToken ? fetch(`https://api.discogs.com/database/search?q=${encodeURIComponent(textQuery)}&type=release&per_page=15`, {
-        headers: { 'User-Agent': 'RecordLens/16.0', 'Authorization': `Discogs token=${discogsToken}` }
+        headers: { 'User-Agent': 'RecordLens/17.0', 'Authorization': `Discogs token=${discogsToken}` }
       }).then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null);
       
       const ePromise = fetch(`https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(textQuery)}&api_key=${serpapiKey}`)
@@ -60,7 +60,13 @@ export async function POST(request) {
           discogsLinks = dJson.results.map(r => ({ link: `https://www.discogs.com/release/${r.id}`, title: r.title, thumbnail: r.thumb }));
       }
       if (eJson && eJson.organic_results) {
-          ebayLinks = eJson.organic_results.slice(0, 10).map(r => ({ link: r.link, title: r.title, thumbnail: r.thumbnail, price: { raw: r.price?.raw } }));
+          ebayLinks = eJson.organic_results.slice(0, 10).map(r => ({ 
+              link: r.link, 
+              title: r.title, 
+              thumbnail: r.thumbnail, 
+              price: { raw: r.price?.raw },
+              shipping: r.shipping || "" 
+          }));
       }
     } else {
       return NextResponse.json({ error: "No image or query provided" }, { status: 400 });
@@ -76,7 +82,7 @@ export async function POST(request) {
         const idMatch = match.link.match(/\/(?:release|master|sell\/(?:release|item|history))\/(\d+)/i);
         if (idMatch) {
           let id = idMatch[1];
-          const headers = { 'User-Agent': 'RecordLens/16.0', 'Authorization': `Discogs token=${discogsToken}` };
+          const headers = { 'User-Agent': 'RecordLens/17.0', 'Authorization': `Discogs token=${discogsToken}` };
           try {
             if (match.link.includes('/master/')) {
               const mRes = await fetch(`https://api.discogs.com/masters/${id}`, { headers });
@@ -117,7 +123,9 @@ export async function POST(request) {
 
     const ebayActiveTask = Promise.all(ebayLinks.map(async (m) => {
       let price = m.price?.raw || (m.price?.extracted_value ? `$${m.price.extracted_value}` : null);
-      if (!price || m.link.includes('ebay.io')) {
+      let shipping = m.shipping || "";
+      
+      if (!price || !shipping || m.link.includes('ebay.io')) {
         try {
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 1200); 
@@ -125,15 +133,26 @@ export async function POST(request) {
           clearTimeout(timeoutId);
           const html = await res.text();
           
-          const metaPrice = html.match(/itemprop="price" content="([^"]+)"/i);
-          if (metaPrice) price = `$${metaPrice[1]}`;
-          else {
-            const backupMatch = html.match(/class="ux-textspans ux-textspans--BOLD"[^>]*>\s*([A-Z£€]*\s*\$?\s*[\d,.]+)\s*<\/span>/i) || html.match(/id="prcIsum_bidPrice"[^>]*>\s*([A-Z£€]*\s*\$?\s*[\d,.]+)/i);
-            if (backupMatch) price = backupMatch[1].trim();
+          if (!price) {
+              const metaPrice = html.match(/itemprop="price" content="([^"]+)"/i);
+              if (metaPrice) price = `$${metaPrice[1]}`;
+              else {
+                const backupMatch = html.match(/class="ux-textspans ux-textspans--BOLD"[^>]*>\s*([A-Z£€]*\s*\$?\s*[\d,.]+)\s*<\/span>/i) || html.match(/id="prcIsum_bidPrice"[^>]*>\s*([A-Z£€]*\s*\$?\s*[\d,.]+)/i);
+                if (backupMatch) price = backupMatch[1].trim();
+              }
           }
+          
+          if (!shipping) {
+              const shipMatch = html.match(/>\s*(Free shipping|Free Shipping)\s*</i) || 
+                                html.match(/>\s*(\+\s*\$[\d.]+\s*shipping)\s*</i) || 
+                                html.match(/class="ux-textspans ux-textspans--SECONDARY ux-textspans--BOLD"[^>]*>([^<]*(?:shipping|Shipping))<\/span>/i) || 
+                                html.match(/id="fshippingCost"[^>]*>([^<]+)<\/span>/i);
+              if (shipMatch) shipping = shipMatch[1].replace(/<[^>]+>/g, '').trim();
+          }
+
         } catch (e) {}
       }
-      return { title: m.title, link: m.link, thumbnail: m.thumbnail, price };
+      return { title: m.title, link: m.link, thumbnail: m.thumbnail, price, shipping };
     }));
 
     const [discogsMatches, ebayActiveMatches] = await Promise.all([ discogsTask, ebayActiveTask ]);
