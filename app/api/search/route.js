@@ -15,7 +15,7 @@ export async function POST(request) {
     };
 
     // ==========================================
-    // HELPER: Indestructible eBay Sold Scraper
+    // HELPER: SerpApi eBay Sold Fetcher
     // ==========================================
     async function fetchEbaySold(queryStr, apiKey) {
       if (!queryStr || !queryStr.trim()) return { results: [], notice: null };
@@ -23,54 +23,27 @@ export async function POST(request) {
       let notice = null;
 
       try {
-        const soldUrl = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(queryStr)}&LH_Sold=1&LH_Complete=1`;
-        const res = await fetch(soldUrl, { headers: botHeaders });
-        const html = await res.text();
+        // By using SerpApi's specific "show_only=Sold" parameter, we bypass eBay's 
+        // bot detection that was aggressively redirecting us to active listings.
+        const serpUrl = `https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(queryStr)}&show_only=Sold&api_key=${apiKey}`;
+        const serpRes = await fetch(serpUrl);
+        const serpJson = await serpRes.json();
         
-        // Detect eBay's "Fewer Words" fallback
-        if (html.match(/Matching fewer words/i) || html.match(/removed some search terms/i)) {
+        // Check if eBay forced a "fewer words" or auto-corrected search
+        if (serpJson.search_information && (serpJson.search_information.showing_results_for || serpJson.search_information.spelling_fix)) {
             notice = "No exact matches found. Displaying results for fewer words:";
         }
 
-        // Split by the core info block (bypasses random layout changes)
-        const blocks = html.split(/class="s-item__info/i).slice(1);
-        
-        for (let block of blocks) {
-          if (block.toLowerCase().includes('shop on ebay')) continue;
-          
-          let titleMatch = block.match(/<div[^>]*s-item__title[^>]*>([\s\S]*?)<\/div>/i);
-          if (!titleMatch) continue;
-          // Strip nested tags like 'New Listing' spans
-          let title = titleMatch[1].replace(/<[^>]+>/g, '').replace(/New Listing/i, '').trim();
-
-          let linkMatch = block.match(/href="([^"]+)"/i);
-          let link = linkMatch ? linkMatch[1].split('?')[0] : "";
-
-          let priceMatch = block.match(/<span[^>]*s-item__price[^>]*>([\s\S]*?)<\/span>/i);
-          let price = priceMatch ? priceMatch[1].replace(/<[^>]+>/g, '').trim() : "";
-
-          let dateMatch = block.match(/<div[^>]*s-item__title--tag[^>]*>([\s\S]*?)<\/div>/i) || 
-                          block.match(/<div[^>]*s-item__caption--tag[^>]*>([\s\S]*?)<\/div>/i) || 
-                          block.match(/<span[^>]*POSITIVE[^>]*>([\s\S]*?)<\/span>/i);
-          let date = dateMatch ? dateMatch[1].replace(/<[^>]+>/g, '').trim() : "";
-
-          if (title && link) results.push({ title, link, price, condition: date });
-          if (results.length >= 15) break;
-        }
-      } catch (e) {}
-
-      // FALLBACK: If Vercel is blocked by Captcha, use SerpApi's Sold engine
-      if (results.length === 0 && apiKey) {
-        try {
-          const serpUrl = `https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(queryStr)}&LH_Sold=1&LH_Complete=1&api_key=${apiKey}`;
-          const serpRes = await fetch(serpUrl);
-          const serpJson = await serpRes.json();
-          if (serpJson.organic_results) {
+        if (serpJson.organic_results) {
             results = serpJson.organic_results.slice(0, 15).map(item => ({
-              title: item.title, link: item.link, price: item.price?.raw || null, condition: item.condition || "Sold"
+              title: item.title, 
+              link: item.link, 
+              price: item.price?.raw || null, 
+              condition: item.condition || "Sold"
             }));
-          }
-        } catch(e) {}
+        }
+      } catch(e) {
+          console.error("SerpApi Sold Fetch Error:", e);
       }
 
       return { results, notice };
@@ -121,7 +94,7 @@ export async function POST(request) {
       if (discogsToken) {
         try {
           const dRes = await fetch(`https://api.discogs.com/database/search?q=${encodeURIComponent(textQuery)}&type=release&per_page=15`, {
-            headers: { 'User-Agent': 'RecordLens/6.0', 'Authorization': `Discogs token=${discogsToken}` }
+            headers: { 'User-Agent': 'RecordLens/7.0', 'Authorization': `Discogs token=${discogsToken}` }
           });
           if (dRes.ok) {
             const dJson = await dRes.json();
@@ -147,14 +120,13 @@ export async function POST(request) {
     // Concurrent Data Fetching
     // ==========================================
 
-    // TASK 1: Discogs Have & Want Stats
     const discogsTask = Promise.all(discogsLinks.map(async (match) => {
       let discogsData = { have: '--', want: '--' };
       if (discogsToken) {
         const idMatch = match.link.match(/\/(?:release|master|sell\/(?:release|item|history))\/(\d+)/i);
         if (idMatch) {
           let id = idMatch[1];
-          const headers = { 'User-Agent': 'RecordLens/6.0', 'Authorization': `Discogs token=${discogsToken}` };
+          const headers = { 'User-Agent': 'RecordLens/7.0', 'Authorization': `Discogs token=${discogsToken}` };
           try {
             if (match.link.includes('/master/')) {
               const mRes = await fetch(`https://api.discogs.com/masters/${id}`, { headers });
@@ -172,7 +144,6 @@ export async function POST(request) {
       return { title: match.title, link: match.link, thumbnail: match.thumbnail, discogsData };
     }));
 
-    // TASK 2: eBay Active HTML Scraper
     const ebayActiveTask = Promise.all(ebayLinks.map(async (m) => {
       let price = m.price?.raw || (m.price?.extracted_value ? `$${m.price.extracted_value}` : null);
       if (!price || m.link.includes('ebay.io')) {
@@ -196,7 +167,6 @@ export async function POST(request) {
       return { title: m.title, link: m.link, thumbnail: m.thumbnail, price };
     }));
 
-    // TASK 3: eBay Sold Fetch
     const ebaySoldTask = fetchEbaySold(textQuery, serpapiKey);
 
     const [discogsMatches, ebayActiveMatches, soldData] = await Promise.all([ discogsTask, ebayActiveTask, ebaySoldTask ]);
