@@ -10,8 +10,6 @@ export async function POST(request) {
 
     const serpapiKey = process.env.SERPAPI_KEY;
     const discogsToken = process.env.DISCOGS_TOKEN;
-    
-    // Disguise the Vercel server as Google's web crawler to bypass Cloudflare bot protection
     const botHeaders = { 'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)' };
 
     // 1. Upload to SerpApi
@@ -27,13 +25,16 @@ export async function POST(request) {
     const searchJson = await searchRes.json();
     const visualMatches = searchJson.visual_matches || [];
 
-    // 3. Unbreakable Text Extraction
+    // 3. Clean Text Extraction
     let rawTitle = searchJson.knowledge_graph?.[0]?.title || visualMatches[0]?.title || "Vinyl Record";
-    let cleanText = rawTitle.replace(/[-|—–]/g, ' ').replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+    let cleanText = rawTitle.replace(/[-|—–]/g, ' ')
+                            .replace(/[^a-zA-Z0-9\s]/g, '')
+                            .replace(/\s+/g, ' ')
+                            .trim();
     let textQuery = cleanText.split(' ').slice(0, 5).join(' ');
     if (!textQuery) textQuery = "Vinyl Record";
 
-    // 4. Process Discogs Matches (Try HTML Scrape First, Fallback to API)
+    // 4. Process Discogs Matches (Transparent Stats Logic)
     let discogsMatches = [];
     const discogsLinks = visualMatches.filter(m => m.link && m.link.toLowerCase().includes('discogs.com')).slice(0, 5);
     
@@ -41,7 +42,7 @@ export async function POST(request) {
         let discogsData = { have: '--', want: '--', rating: '--', ratingsCount: '--', lastSold: 'API Hidden', low: '--', median: '--', high: '--', debug: 'PENDING' };
         let scrapedSuccessfully = false;
 
-        // ATTEMPT 1: Disguised HTML Scrape (Yields exact website data)
+        // Try Disguised Scrape First
         try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 2000);
@@ -67,7 +68,7 @@ export async function POST(request) {
             }
         } catch(e) {}
 
-        // ATTEMPT 2: Fallback to Restricted Developer API if Cloudflare blocked the Googlebot disguise
+        // Fallback to API if Scrape fails
         if (!scrapedSuccessfully) {
             if (!discogsToken) {
                 discogsData.debug = "HTML Blocked & No Token Saved";
@@ -82,7 +83,11 @@ export async function POST(request) {
                             if (mRes.ok) id = (await mRes.json()).main_release;
                         }
 
-                        const relRes = await fetch(`https://api.discogs.com/releases/${id}`, { headers });
+                        const [relRes, priceRes] = await Promise.all([
+                            fetch(`https://api.discogs.com/releases/${id}`, { headers }),
+                            fetch(`https://api.discogs.com/marketplace/price_suggestions/${id}`, { headers })
+                        ]);
+
                         if (relRes.ok) {
                             const rData = await relRes.json();
                             discogsData.have = rData.community?.have ?? '--';
@@ -90,11 +95,28 @@ export async function POST(request) {
                             discogsData.rating = rData.community?.rating?.average ?? '--';
                             discogsData.ratingsCount = rData.community?.rating?.count ?? '--';
                             
-                            // The API doesn't give historical low, but it gives current lowest active price
-                            if (rData.lowest_price) discogsData.low = `$${rData.lowest_price.toFixed(2)}`;
-                            discogsData.debug = "SUCCESS (API Data - Financials Restricted)";
+                            // Grabs Current Active Lowest Price as a backup
+                            if (rData.lowest_price) {
+                                discogsData.low = `$${rData.lowest_price.toFixed(2)} (Active)`;
+                            }
+                            discogsData.debug = "SUCCESS (API Data)";
+                        }
+
+                        if (priceRes.ok) {
+                            const pData = await priceRes.json();
+                            const fmt = v => v ? `$${v.toFixed(2)}` : null;
+                            discogsData.low = fmt(pData["Good (G)"]?.value) || discogsData.low; 
+                            discogsData.median = fmt(pData["Very Good Plus (VG+)"]?.value) || '--';
+                            discogsData.high = fmt(pData["Near Mint (NM or M-)"]?.value) || '--';
+                        } else if (priceRes.status === 404) {
+                            // If 404, it means 0 historical sales. Clarify this in the UI.
+                            discogsData.median = "No Sales";
+                            discogsData.high = "No Sales";
+                            if (discogsData.debug === "SUCCESS (API Data)") {
+                                discogsData.debug = "SUCCESS (API Data - 0 Historical Sales)";
+                            }
                         } else {
-                            discogsData.debug = `HTML Blocked & API Error ${relRes.status}`;
+                            discogsData.debug += ` | Pricing API Error ${priceRes.status}`;
                         }
                     } catch (err) {
                         discogsData.debug = `Crash: ${err.message}`;
@@ -105,25 +127,31 @@ export async function POST(request) {
         discogsMatches.push({ title: match.title, link: match.link, thumbnail: match.thumbnail, discogsData });
     }
 
-    // 5. Process eBay Active Matches (With Meta-Tag Scraper)
+    // 5. Process eBay Active Matches (Upgraded International / Auction Scraper)
     let ebayActiveMatches = [];
     const ebayLinks = visualMatches.filter(m => m.link && m.link.toLowerCase().includes('ebay.com')).slice(0, 5);
     
     for (let m of ebayLinks) {
         let price = m.price?.raw || (m.price?.extracted_value ? `$${m.price.extracted_value}` : null);
         
-        // If Google Lens missed the price, aggressively scrape the exact page
         if (!price) {
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 1500); 
+                const timeoutId = setTimeout(() => controller.abort(), 1800); 
                 const res = await fetch(m.link, { headers: botHeaders, signal: controller.signal });
                 clearTimeout(timeoutId);
                 const html = await res.text();
                 
-                // Look for the invisible meta tag eBay uses for search engines, or the backup CSS class
-                const priceMatch = html.match(/itemprop="price" content="([^"]+)"/i) || html.match(/class="x-price-primary"[^>]*>\s*US\s*\$([\d,.]+)/i);
-                if (priceMatch) price = `$${priceMatch[1]}`;
+                // First check hidden meta tag (Super reliable for Buy It Now)
+                const metaPrice = html.match(/itemprop="price" content="([^"]+)"/i);
+                if (metaPrice) {
+                    const cur = html.match(/itemprop="priceCurrency" content="([^"]+)"/i);
+                    price = cur ? `${cur[1]} ${metaPrice[1]}` : `$${metaPrice[1]}`;
+                } else {
+                    // Fallback to visual HTML classes (Now catches UK £, Euro €, CAD $, and Auctions)
+                    const backupMatch = html.match(/class="ux-textspans ux-textspans--BOLD"[^>]*>\s*([A-Z£€]*\s*\$?\s*[\d,.]+)\s*<\/span>/i);
+                    if (backupMatch) price = backupMatch[1].trim();
+                }
             } catch(e) {}
         }
         ebayActiveMatches.push({ title: m.title, link: m.link, thumbnail: m.thumbnail, price });
