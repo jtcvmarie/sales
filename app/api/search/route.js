@@ -48,7 +48,7 @@ export async function POST(request) {
       textQuery = manualQuery;
       
       const dPromise = discogsToken ? fetch(`https://api.discogs.com/database/search?q=${encodeURIComponent(textQuery)}&type=release&per_page=15`, {
-        headers: { 'User-Agent': 'RecordLens/18.0', 'Authorization': `Discogs token=${discogsToken}` }
+        headers: { 'User-Agent': 'RecordLens/19.0', 'Authorization': `Discogs token=${discogsToken}` }
       }).then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null);
       
       const ePromise = fetch(`https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(textQuery)}&api_key=${serpapiKey}`)
@@ -60,12 +60,13 @@ export async function POST(request) {
           discogsLinks = dJson.results.map(r => ({ link: `https://www.discogs.com/release/${r.id}`, title: r.title, thumbnail: r.thumb }));
       }
       if (eJson && eJson.organic_results) {
+          // Safely pass the raw objects; we will strict-parse them in the Concurrent processing
           ebayLinks = eJson.organic_results.slice(0, 10).map(r => ({ 
               link: r.link, 
               title: r.title, 
               thumbnail: r.thumbnail, 
-              price: { raw: r.price?.raw },
-              shipping: r.shipping || "" 
+              price: r.price,
+              shipping: r.shipping
           }));
       }
     } else {
@@ -82,7 +83,7 @@ export async function POST(request) {
         const idMatch = match.link.match(/\/(?:release|master|sell\/(?:release|item|history))\/(\d+)/i);
         if (idMatch) {
           let id = idMatch[1];
-          const headers = { 'User-Agent': 'RecordLens/18.0', 'Authorization': `Discogs token=${discogsToken}` };
+          const headers = { 'User-Agent': 'RecordLens/19.0', 'Authorization': `Discogs token=${discogsToken}` };
           try {
             if (match.link.includes('/master/')) {
               const mRes = await fetch(`https://api.discogs.com/masters/${id}`, { headers });
@@ -92,12 +93,12 @@ export async function POST(request) {
             if (relRes.ok) {
               const rData = await relRes.json();
               
-              discogsData.have = rData.community?.have ?? '--';
-              discogsData.want = rData.community?.want ?? '--';
+              discogsData.have = String(rData.community?.have ?? '--');
+              discogsData.want = String(rData.community?.want ?? '--');
               if (rData.lowest_price) discogsData.activeLow = `$${rData.lowest_price.toFixed(2)}`;
               
-              discogsData.country = rData.country || '--';
-              discogsData.released = rData.year || rData.released || '--';
+              discogsData.country = rData.country ? String(rData.country) : '--';
+              discogsData.released = rData.year ? String(rData.year) : (rData.released ? String(rData.released) : '--');
               
               if (rData.labels && rData.labels.length > 0) {
                   let labelStr = rData.labels[0].name || '';
@@ -118,14 +119,21 @@ export async function POST(request) {
           } catch (err) {}
         }
       }
-      return { title: match.title, link: match.link, thumbnail: match.thumbnail, discogsData };
+      return { title: match.title || "", link: match.link || "", thumbnail: match.thumbnail || "", discogsData };
     }));
 
     const ebayActiveTask = Promise.all(ebayLinks.map(async (m) => {
-      let price = m.price?.raw || (m.price?.extracted_value ? `$${m.price.extracted_value}` : null);
-      let shipping = m.shipping || "";
+      // STRICT CRASH PREVENTION: Forcing price and shipping to be plain Strings
+      let price = "";
+      if (typeof m.price === 'string') price = m.price;
+      else if (m.price && m.price.raw) price = m.price.raw;
+      else if (m.price && m.price.extracted_value) price = `$${m.price.extracted_value}`;
+
+      let shipping = "";
+      if (typeof m.shipping === 'string') shipping = m.shipping;
+      else if (m.shipping && m.shipping.raw) shipping = m.shipping.raw;
       
-      if (!price || !shipping || m.link.includes('ebay.io')) {
+      if (!price || !shipping || (m.link && m.link.includes('ebay.io'))) {
         try {
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 1200); 
@@ -152,7 +160,13 @@ export async function POST(request) {
 
         } catch (e) {}
       }
-      return { title: m.title, link: m.link, thumbnail: m.thumbnail, price, shipping };
+      return { 
+          title: m.title || "", 
+          link: m.link || "", 
+          thumbnail: m.thumbnail || "", 
+          price: price || "", 
+          shipping: shipping || "" 
+      };
     }));
 
     const [discogsMatches, ebayActiveMatches] = await Promise.all([ discogsTask, ebayActiveTask ]);
