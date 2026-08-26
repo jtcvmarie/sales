@@ -64,11 +64,11 @@ export default function Home() {
 
   return (
     <main style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto', backgroundColor: '#fff', paddingBottom: '100px' }}>
-      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V25</h2>
+      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V28</h2>
       
       <input type="file" accept="image/*" capture="environment" onChange={handleCapture} style={{ padding: '10px', fontSize: '16px', marginBottom: '15px', width: '100%', backgroundColor: '#f9f9f9', border: '1px solid #ccc', borderRadius: '5px' }} />
       
-      {loading && <p style={{ fontWeight: 'bold', color: '#0070f3' }}>Scanning artwork & breaking through firewalls...</p>}
+      {loading && <p style={{ fontWeight: 'bold', color: '#0070f3' }}>Scanning artwork & rapidly pulling active markets...</p>}
       {errorMsg && <p style={{ color: 'red', fontWeight: 'bold', backgroundColor: '#fee', padding: '10px', borderRadius: '4px' }}>{errorMsg}</p>}
       
       {/* 1. DISCOGS SECTION */}
@@ -82,7 +82,7 @@ export default function Home() {
             </div>
           ) : (
             discogs.map((item, i) => {
-              const dData = item.discogsData || { have:'--', want:'--', rating:'--', ratingsCount:'--', lastSold:'--', low:'--', median:'--', high:'--', debug: 'DATA_FAILED_TO_LOAD' };
+              const dData = item.discogsData || { have:'--', want:'--', rating:'--', ratingsCount:'--', low:'--', high:'--', debug: '' };
               
               return (
                 <div key={i} style={{ marginBottom: '20px', borderBottom: '2px solid #eee', paddingBottom: '20px' }}>
@@ -94,22 +94,20 @@ export default function Home() {
                     </div>
                   </div>
                   
-                  {/* DISCOGS GRID */}
+                  {/* DISCOGS NEW COMPACT GRID (Active Prices Only) */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '13px', backgroundColor: '#fafafa', padding: '12px', borderRadius: '6px', marginTop: '15px', border: '1px solid #e0e0e0' }}>
                     <div><span style={{color: 'gray'}}>Have:</span> <strong>{dData.have}</strong></div>
                     <div><span style={{color: 'gray'}}>Want:</span> <strong>{dData.want}</strong></div>
                     <div><span style={{color: 'gray'}}>Avg Rating:</span> <strong>{dData.rating}</strong></div>
                     <div><span style={{color: 'gray'}}>Ratings:</span> <strong>{dData.ratingsCount}</strong></div>
-                    <div><span style={{color: 'gray'}}>Last Sold:</span> <strong style={{color: '#8b0000'}}>{dData.lastSold}</strong></div>
-                    <div><span style={{color: 'gray'}}>Low:</span> <strong>{dData.low}</strong></div>
-                    <div><span style={{color: 'gray'}}>Median:</span> <strong>{dData.median}</strong></div>
-                    <div><span style={{color: 'gray'}}>High:</span> <strong>{dData.high}</strong></div>
+                    <div><span style={{color: 'gray'}}>Active Low:</span> <strong style={{color: 'green'}}>{dData.low}</strong></div>
+                    <div><span style={{color: 'gray'}}>Active High:</span> <strong style={{color: '#8b0000'}}>{dData.high}</strong></div>
                   </div>
                   
-                  {/* ERROR OUTPUT */}
-                  {dData.debug && (
-                     <div style={{ color: dData.debug.includes("SUCCESS") ? 'green' : '#d93025', fontSize: '11px', marginTop: '10px', fontWeight: 'bold', padding: '8px', backgroundColor: dData.debug.includes("SUCCESS") ? '#e6ffe6' : '#ffe6e6', borderRadius: '4px' }}>
-                        DATA SOURCE: {dData.debug}
+                  {/* ERROR OUTPUT (Only shows if there is a real error) */}
+                  {dData.debug && dData.debug.includes("ERROR") && (
+                     <div style={{ color: '#d93025', fontSize: '11px', marginTop: '10px', fontWeight: 'bold', padding: '8px', backgroundColor: '#ffe6e6', borderRadius: '4px' }}>
+                        API DIAGNOSTIC: {dData.debug}
                      </div>
                   )}
                 </div>
@@ -136,7 +134,6 @@ export default function Home() {
                   <div style={{ flex: 1 }}>
                     <a href={item.link} target="_blank" rel="noreferrer" style={{ display: 'block', fontWeight: 'bold', fontSize: '14px', marginBottom: '5px' }}>{item.title}</a>
                     
-                    {/* Note: Lens does not always scrape prices from category pages. This is normal. */}
                     <div style={{ fontWeight: 'bold', color: item.price ? 'green' : '#666', fontSize: '16px', marginBottom: '3px' }}>
                       {item.price || "View on eBay"}
                     </div>
@@ -180,7 +177,7 @@ export default function Home() {
       {/* 4. STRING SEARCH AND COPY AT THE BOTTOM */}
       {hasSearched && (
         <div style={{ padding: '20px', backgroundColor: '#eef2f5', borderRadius: '8px', marginTop: '20px', border: '1px solid #cddde6' }}>
-          <p style={{ margin: '0 0 8px 0', fontSize: '14px', color: '#555', fontWeight: 'bold' }}>Generated Search String:</p>
+          <p style={{ margin: '0 0 8px 0', fontSize: '14px', color: '#555', fontWeight: 'bold' }}>Generated 10-Word Search Query:</p>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '16px', color: '#000', wordBreak: 'break-word', paddingRight: '15px' }}>
               {textQuery}
