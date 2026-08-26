@@ -15,7 +15,7 @@ export async function POST(request) {
     };
 
     // ==========================================
-    // HELPER: Indestructible eBay Sold Scraper
+    // HELPER: Strict eBay Sold Scraper
     // ==========================================
     async function fetchEbaySold(queryStr, apiKey) {
       if (!queryStr || !queryStr.trim()) return { results: [], notice: null, debug: "Empty query provided." };
@@ -28,7 +28,6 @@ export async function POST(request) {
         const res = await fetch(soldUrl, { headers: botHeaders });
         const html = await res.text();
         
-        // Check for eBay's auto-fallback to fewer words
         if (html.match(/Matching fewer words/i) || html.match(/removed some search terms/i) || html.match(/No exact matches found/i)) {
             notice = "No exact matches found. Displaying results matching fewer words:";
         }
@@ -38,34 +37,35 @@ export async function POST(request) {
         for (let block of blocks) {
           if (block.toLowerCase().includes('shop on ebay')) continue;
           
+          // THE FIX: Strict Sold Verification. 
+          // If eBay tries to soft-block us and serve Active listings, the block will NOT contain the 'POSITIVE' class.
+          // If it lacks 'POSITIVE', we throw the result in the trash so we don't lie to the user.
+          if (!block.includes('POSITIVE')) continue;
+          
           let titleMatch = block.match(/<div[^>]*s-item__title[^>]*>([\s\S]*?)<\/div>/i);
           if (!titleMatch) continue;
           let title = titleMatch[1].replace(/<[^>]+>/g, '').replace(/New Listing/i, '').trim();
 
           let linkMatch = block.match(/href="([^"]+)"/i);
-          let link = "";
-          if (linkMatch) {
-              // Strip tracking garbage, but explicitly append orig_cvip=true to PREVENT auto-redirect to active listings
-              link = linkMatch[1].split('?')[0] + "?orig_cvip=true";
-          }
+          let link = linkMatch ? linkMatch[1].split('?')[0] + "?orig_cvip=true" : "";
 
-          let priceMatch = block.match(/<span[^>]*s-item__price[^>]*>([\s\S]*?)<\/span>/i);
+          // Ensure we are pulling the specific green price
+          let priceMatch = block.match(/<span[^>]*POSITIVE[^>]*>([\s\S]*?\$[\d,.]+)<\/span>/i) || block.match(/<span[^>]*s-item__price[^>]*>([\s\S]*?)<\/span>/i);
           let price = priceMatch ? priceMatch[1].replace(/<[^>]+>/g, '').trim() : "";
 
           let dateMatch = block.match(/<div[^>]*s-item__title--tag[^>]*>([\s\S]*?)<\/div>/i) || 
-                          block.match(/<div[^>]*s-item__caption--tag[^>]*>([\s\S]*?)<\/div>/i) || 
-                          block.match(/<span[^>]*POSITIVE[^>]*>([\s\S]*?)<\/span>/i);
+                          block.match(/<span[^>]*POSITIVE[^>]*>([\s\S]*?202[0-9])<\/span>/i);
           let date = dateMatch ? dateMatch[1].replace(/<[^>]+>/g, '').trim() : "Sold";
 
           if (title && link) results.push({ title, link, price, condition: date });
           if (results.length >= 15) break;
         }
-        debugMsg += `Found ${results.length} items. `;
+        debugMsg += `Verified ${results.length} strictly sold items. `;
       } catch (e) {
         debugMsg += `Error (${e.message}). `;
       }
 
-      // FALLBACK TO SERPAPI IF BLOCKED BY CAPTCHA OR 0 RESULTS
+      // FALLBACK TO SERPAPI
       if (results.length === 0 && apiKey) {
         debugMsg += "Fallback API: ";
         try {
@@ -78,15 +78,19 @@ export async function POST(request) {
           }
 
           if (serpJson.organic_results && serpJson.organic_results.length > 0) {
-            results = serpJson.organic_results.slice(0, 15).map(item => {
-              // Guarantee SerpApi links don't redirect either
-              let safeLink = item.link;
-              if (!safeLink.includes('orig_cvip')) {
-                  safeLink += safeLink.includes('?') ? '&orig_cvip=true' : '?orig_cvip=true';
-              }
-              return { title: item.title, link: safeLink, price: item.price?.raw || null, condition: item.condition || "Sold" };
-            });
-            debugMsg += `Found ${results.length} items.`;
+            for (let item of serpJson.organic_results) {
+               // STRICT API VERIFICATION: SerpApi must confirm it's sold
+               let condition = item.condition || "";
+               let isSold = condition.toLowerCase().includes('sold') || (item.extensions && item.extensions.some(e => e.toLowerCase().includes('sold')));
+               
+               if (isSold || item.price?.raw) {
+                   let safeLink = item.link;
+                   if (!safeLink.includes('orig_cvip')) safeLink += safeLink.includes('?') ? '&orig_cvip=true' : '?orig_cvip=true';
+                   results.push({ title: item.title, link: safeLink, price: item.price?.raw || null, condition: condition || "Sold" });
+               }
+               if (results.length >= 15) break;
+            }
+            debugMsg += `Verified ${results.length} items.`;
           } else {
             debugMsg += "0 items found.";
           }
@@ -98,9 +102,6 @@ export async function POST(request) {
       return { results, notice, debug: debugMsg };
     }
 
-    // ==========================================
-    // ROUTE 1: Dedicated eBay Sold-Only Request
-    // ==========================================
     if (soldOnlyQuery) {
       const soldData = await fetchEbaySold(soldOnlyQuery, serpapiKey);
       return NextResponse.json({ 
@@ -116,9 +117,6 @@ export async function POST(request) {
     let discogsLinks = [];
     let ebayLinks = [];
 
-    // ==========================================
-    // ROUTE 2: Image Upload (Google Lens)
-    // ==========================================
     if (file) {
       const uploadData = new FormData();
       uploadData.append('image', file);
@@ -138,9 +136,6 @@ export async function POST(request) {
       discogsLinks = visualMatches.filter(m => m.link && m.link.toLowerCase().includes('discogs.com')).slice(0, 15);
       ebayLinks = visualMatches.filter(m => m.link && m.link.toLowerCase().includes('ebay.com')).slice(0, 6);
     } 
-    // ==========================================
-    // ROUTE 3: Manual Text Search (MAX CONCURRENCY)
-    // ==========================================
     else if (manualQuery) {
       textQuery = manualQuery;
       
@@ -153,19 +148,9 @@ export async function POST(request) {
 
       const [dJson, eJson] = await Promise.all([dPromise, ePromise]);
 
-      if (dJson && dJson.results) {
-        discogsLinks = dJson.results.map(r => ({ link: `https://www.discogs.com/release/${r.id}`, title: r.title, thumbnail: r.thumb }));
-      }
-      if (eJson && eJson.organic_results) {
-        ebayLinks = eJson.organic_results.slice(0, 6).map(r => ({ link: r.link, title: r.title, thumbnail: r.thumbnail, price: { raw: r.price?.raw } }));
-      }
-    } else {
-      return NextResponse.json({ error: "No image or query provided" }, { status: 400 });
+      if (dJson && dJson.results) discogsLinks = dJson.results.map(r => ({ link: `https://www.discogs.com/release/${r.id}`, title: r.title, thumbnail: r.thumb }));
+      if (eJson && eJson.organic_results) ebayLinks = eJson.organic_results.slice(0, 6).map(r => ({ link: r.link, title: r.title, thumbnail: r.thumbnail, price: { raw: r.price?.raw } }));
     }
-
-    // ==========================================
-    // SIMULTANEOUS DATA PROCESSING (Tasks 1, 2, & 3)
-    // ==========================================
 
     const discogsTask = Promise.all(discogsLinks.map(async (match) => {
       let discogsData = { have: '--', want: '--' };
@@ -205,8 +190,7 @@ export async function POST(request) {
           if (metaPrice) {
             price = `$${metaPrice[1]}`;
           } else {
-            const backupMatch = html.match(/class="ux-textspans ux-textspans--BOLD"[^>]*>\s*([A-Z£€]*\s*\$?\s*[\d,.]+)\s*<\/span>/i) ||
-                                html.match(/id="prcIsum_bidPrice"[^>]*>\s*([A-Z£€]*\s*\$?\s*[\d,.]+)/i);
+            const backupMatch = html.match(/class="ux-textspans ux-textspans--BOLD"[^>]*>\s*([A-Z£€]*\s*\$?\s*[\d,.]+)\s*<\/span>/i) || html.match(/id="prcIsum_bidPrice"[^>]*>\s*([A-Z£€]*\s*\$?\s*[\d,.]+)/i);
             if (backupMatch) price = backupMatch[1].trim();
           }
         } catch (e) {}
