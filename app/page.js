@@ -5,6 +5,7 @@ export default function Home() {
   const [discogs, setDiscogs] = useState([]);
   const [ebayActive, setEbayActive] = useState([]);
   const [ebaySold, setEbaySold] = useState([]);
+  const [soldNotice, setSoldNotice] = useState(null);
   
   // Independent Search Strings
   const [mainQuery, setMainQuery] = useState("");
@@ -29,7 +30,6 @@ export default function Home() {
     });
   };
 
-  // Image Upload Trigger
   const handleCapture = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -37,6 +37,7 @@ export default function Home() {
     setLoadingMain(true); 
     setErrorMsg(""); 
     setHasSearched(false);
+    setSoldNotice(null);
     
     try {
       const smallFile = await shrinkImage(file);
@@ -52,10 +53,11 @@ export default function Home() {
       setDiscogs(data.discogsMatches || []);
       setEbayActive(data.ebayActiveMatches || []);
       setEbaySold(data.ebaySoldResults || []);
+      setSoldNotice(data.soldNotice || null);
+      
       setMainQuery(data.textQuery || "");
       setSoldQuery(data.textQuery || "");
       setHasSearched(true);
-      
     } catch (error) { 
       setErrorMsg("Error: " + error.message); 
     } finally { 
@@ -63,13 +65,12 @@ export default function Home() {
     }
   };
 
-  // Main Text Search (Discogs + eBay Active + Default Sold)
   const handleMainSearch = async () => {
     if (!mainQuery.trim()) return;
-    
     setLoadingMain(true);
     setErrorMsg("");
     setHasSearched(false);
+    setSoldNotice(null);
 
     try {
       const formData = new FormData();
@@ -84,6 +85,7 @@ export default function Home() {
       setDiscogs(data.discogsMatches || []);
       setEbayActive(data.ebayActiveMatches || []);
       setEbaySold(data.ebaySoldResults || []);
+      setSoldNotice(data.soldNotice || null);
       setSoldQuery(data.textQuery || mainQuery);
       setHasSearched(true);
     } catch (error) {
@@ -93,11 +95,10 @@ export default function Home() {
     }
   };
 
-  // Independent eBay Sold Search
   const handleSoldSearch = async () => {
     if (!soldQuery.trim()) return;
-    
     setLoadingSold(true);
+    setSoldNotice(null);
     try {
       const formData = new FormData();
       formData.append('soldQuery', soldQuery);
@@ -109,6 +110,7 @@ export default function Home() {
       if (data.error) throw new Error(data.error);
       
       setEbaySold(data.ebaySoldResults || []);
+      setSoldNotice(data.soldNotice || null);
     } catch (error) {
       alert("Sold Search Error: " + error.message);
     } finally {
@@ -116,15 +118,16 @@ export default function Home() {
     }
   };
 
-  const ebaySoldDirectUrl = soldQuery ? `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(soldQuery)}&_sacat=0&_from=R40&rt=nc&LH_Sold=1` : '#';
+  const ebayActiveDirectUrl = mainQuery ? `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(mainQuery)}` : '#';
+  const ebaySoldDirectUrl = soldQuery ? `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(soldQuery)}&LH_Sold=1&LH_Complete=1` : '#';
 
   return (
     <main style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto', backgroundColor: '#fff', paddingBottom: '100px' }}>
-      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V31</h2>
+      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V32</h2>
       
       <input type="file" accept="image/*" capture="environment" onChange={handleCapture} style={{ padding: '10px', fontSize: '16px', marginBottom: '12px', width: '100%', backgroundColor: '#f9f9f9', border: '1px solid #ccc', borderRadius: '5px' }} />
       
-      {/* 1. MAIN GLOBAL SEARCH BAR (Discogs & eBay Active) */}
+      {/* GLOBAL SEARCH BAR */}
       <div style={{ marginBottom: '20px', display: 'flex', gap: '8px' }}>
         <input 
           type="text" 
@@ -145,7 +148,7 @@ export default function Home() {
       {loadingMain && <p style={{ fontWeight: 'bold', color: '#0070f3' }}>Fetching market data...</p>}
       {errorMsg && <p style={{ color: 'red', fontWeight: 'bold', backgroundColor: '#fee', padding: '10px', borderRadius: '4px' }}>{errorMsg}</p>}
       
-      {/* 2. DISCOGS SECTION (Up to 15 Results with Emphasized Want & Have) */}
+      {/* DISCOGS SECTION */}
       {hasSearched && (
         <div style={{ marginBottom: '40px' }}>
           <h3 style={{ backgroundColor: '#222', color: 'white', padding: '10px 15px', borderRadius: '4px', margin: '0 0 15px 0' }}>
@@ -191,10 +194,15 @@ export default function Home() {
         </div>
       )}
 
-      {/* 3. EBAY ACTIVE SECTION */}
+      {/* EBAY ACTIVE SECTION */}
       {hasSearched && (
         <div style={{ marginBottom: '40px' }}>
-          <h3 style={{ backgroundColor: '#0064d2', color: 'white', padding: '10px 15px', borderRadius: '4px', margin: '0 0 15px 0' }}>eBay Active Matches</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', backgroundColor: '#0064d2', padding: '10px 15px', borderRadius: '4px' }}>
+            <h3 style={{ margin: 0, color: 'white' }}>eBay Active Matches</h3>
+            <a href={ebayActiveDirectUrl} target="_blank" rel="noreferrer" style={{ fontSize: '12px', color: 'white', textDecoration: 'none', fontWeight: 'bold', border: '1px solid white', padding: '4px 8px', borderRadius: '4px' }}>
+              View All on eBay →
+            </a>
+          </div>
           
           {ebayActive.length === 0 ? (
             <div style={{ padding: '15px', backgroundColor: '#fafafa', border: '1px solid #ddd', borderRadius: '6px' }}>
@@ -224,7 +232,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 4. SEPARATE EBAY SOLD SEARCH SECTION */}
+      {/* EBAY SOLD SECTION */}
       {hasSearched && (
         <div style={{ marginBottom: '40px', borderTop: '4px solid #8b0000', paddingTop: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
@@ -234,7 +242,6 @@ export default function Home() {
             </a>
           </div>
 
-          {/* DEDICATED INDEPENDENT EBAY SOLD SEARCH BAR */}
           <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: '#fcf2f2', borderRadius: '6px', border: '1px solid #f5c6cb' }}>
             <p style={{ margin: '0 0 6px 0', fontSize: '12px', color: '#721c24', fontWeight: 'bold' }}>Edit Sold Search Query:</p>
             <div style={{ display: 'flex', gap: '8px' }}>
@@ -254,6 +261,13 @@ export default function Home() {
               </button>
             </div>
           </div>
+
+          {/* DYNAMIC FEWER WORDS NOTICE */}
+          {soldNotice && (
+            <div style={{ padding: '10px', backgroundColor: '#fff3cd', color: '#856404', border: '1px solid #ffeeba', borderRadius: '6px', marginBottom: '15px', fontSize: '13px', fontWeight: 'bold' }}>
+              ⚠️ {soldNotice}
+            </div>
+          )}
 
           {ebaySold.length === 0 ? (
             <div style={{ padding: '20px', backgroundColor: '#fff5f5', border: '1px solid #fcdcdc', borderRadius: '6px', textAlign: 'center' }}>
