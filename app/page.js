@@ -6,6 +6,7 @@ export default function Home() {
   const [ebayActive, setEbayActive] = useState([]);
   const [ebaySold, setEbaySold] = useState([]);
   const [soldNotice, setSoldNotice] = useState(null);
+  const [soldDebug, setSoldDebug] = useState(null); // Diagnostic output for 0 results
   
   // Independent Search Strings
   const [mainQuery, setMainQuery] = useState("");
@@ -38,6 +39,7 @@ export default function Home() {
     setErrorMsg(""); 
     setHasSearched(false);
     setSoldNotice(null);
+    setSoldDebug(null);
     
     try {
       const smallFile = await shrinkImage(file);
@@ -54,6 +56,7 @@ export default function Home() {
       setEbayActive(data.ebayActiveMatches || []);
       setEbaySold(data.ebaySoldResults || []);
       setSoldNotice(data.soldNotice || null);
+      setSoldDebug(data.soldDebug || null);
       
       setMainQuery(data.textQuery || "");
       setSoldQuery(data.textQuery || "");
@@ -71,6 +74,7 @@ export default function Home() {
     setErrorMsg("");
     setHasSearched(false);
     setSoldNotice(null);
+    setSoldDebug(null);
 
     try {
       const formData = new FormData();
@@ -86,6 +90,7 @@ export default function Home() {
       setEbayActive(data.ebayActiveMatches || []);
       setEbaySold(data.ebaySoldResults || []);
       setSoldNotice(data.soldNotice || null);
+      setSoldDebug(data.soldDebug || null);
       setSoldQuery(data.textQuery || mainQuery);
       setHasSearched(true);
     } catch (error) {
@@ -99,6 +104,7 @@ export default function Home() {
     if (!soldQuery.trim()) return;
     setLoadingSold(true);
     setSoldNotice(null);
+    setSoldDebug(null);
     try {
       const formData = new FormData();
       formData.append('soldQuery', soldQuery);
@@ -111,6 +117,7 @@ export default function Home() {
       
       setEbaySold(data.ebaySoldResults || []);
       setSoldNotice(data.soldNotice || null);
+      setSoldDebug(data.soldDebug || null);
     } catch (error) {
       alert("Sold Search Error: " + error.message);
     } finally {
@@ -123,7 +130,7 @@ export default function Home() {
 
   return (
     <main style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto', backgroundColor: '#fff', paddingBottom: '100px' }}>
-      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V33</h2>
+      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V34</h2>
       
       <input type="file" accept="image/*" capture="environment" onChange={handleCapture} style={{ padding: '10px', fontSize: '16px', marginBottom: '12px', width: '100%', backgroundColor: '#f9f9f9', border: '1px solid #ccc', borderRadius: '5px' }} />
       
@@ -145,7 +152,7 @@ export default function Home() {
         </button>
       </div>
 
-      {loadingMain && <p style={{ fontWeight: 'bold', color: '#0070f3' }}>Fetching market data...</p>}
+      {loadingMain && <p style={{ fontWeight: 'bold', color: '#0070f3' }}>Fetching market data as fast as possible...</p>}
       {errorMsg && <p style={{ color: 'red', fontWeight: 'bold', backgroundColor: '#fee', padding: '10px', borderRadius: '4px' }}>{errorMsg}</p>}
       
       {/* DISCOGS SECTION */}
@@ -272,6 +279,12 @@ export default function Home() {
           {ebaySold.length === 0 ? (
             <div style={{ padding: '20px', backgroundColor: '#fff5f5', border: '1px solid #fcdcdc', borderRadius: '6px', textAlign: 'center' }}>
               <p style={{ fontSize: '14px', color: '#8b0000', margin: 0, fontWeight: 'bold' }}>No Sold Results Found.</p>
+              {/* TRANSPARENT ERROR OUTPUT SO YOU KNOW EXACTLY WHY IT FAILED */}
+              {soldDebug && (
+                 <p style={{ fontSize: '11px', color: '#d93025', marginTop: '10px', fontWeight: 'bold', backgroundColor: '#ffe6e6', padding: '8px', borderRadius: '4px', display: 'inline-block' }}>
+                    Backend Diagnostic: {soldDebug}
+                 </p>
+              )}
             </div>
           ) : (
             ebaySold.map((item, i) => (
