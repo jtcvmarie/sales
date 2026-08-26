@@ -13,7 +13,7 @@ export default function Home() {
   const [hasSearched, setHasSearched] = useState(false);
 
   // Layout View Toggles
-  const [showLow, setShowLow] = useState(true);
+  const [showMarket, setShowMarket] = useState(true);
   const [showDiscogs, setShowDiscogs] = useState(true);
   const [showEbay, setShowEbay] = useState(true);
 
@@ -99,7 +99,6 @@ export default function Home() {
     }
   };
 
-  // STRICT CRASH-PROOF COLORIZER
   const renderFormat = (fmtStr) => {
     if (!fmtStr || typeof fmtStr !== 'string' || fmtStr === '--') return '--';
     const formatKeywords = ['vinyl', 'lp', '45', '78', '33', 'shellac', 'cassette', '7"', '10"', '12"', 'cd'];
@@ -122,7 +121,7 @@ export default function Home() {
 
   return (
     <main style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto', backgroundColor: '#fff', paddingBottom: '100px' }}>
-      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '15px' }}>Record Lens V46</h2>
+      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '15px' }}>Record Lens V47</h2>
       
       <input type="file" accept="image/*" capture="environment" onChange={handleCapture} style={{ padding: '10px', fontSize: '16px', marginBottom: '15px', width: '100%', backgroundColor: '#f9f9f9', border: '1px solid #ccc', borderRadius: '5px' }} />
       
@@ -147,7 +146,7 @@ export default function Home() {
       {/* VIEW TOGGLE CHECKBOXES */}
       <div style={{ display: 'flex', gap: '20px', marginBottom: '25px', fontSize: '14px', fontWeight: 'bold', color: '#444', backgroundColor: '#f5f5f5', padding: '10px 15px', borderRadius: '6px', border: '1px solid #ddd' }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-          <input type="checkbox" checked={showLow} onChange={(e) => setShowLow(e.target.checked)} style={{ width: '16px', height: '16px' }} /> Low Price
+          <input type="checkbox" checked={showMarket} onChange={(e) => setShowMarket(e.target.checked)} style={{ width: '16px', height: '16px' }} /> Market
         </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
           <input type="checkbox" checked={showDiscogs} onChange={(e) => setShowDiscogs(e.target.checked)} style={{ width: '16px', height: '16px' }} /> Discogs
@@ -180,12 +179,11 @@ export default function Home() {
               </div>
             ) : (
               discogs.map((item, i) => {
-                const dData = item.discogsData || { have: '--', want: '--', activeLow: '--', label: '--', format: '--', country: '--', released: '--' };
+                const dData = item.discogsData || { have: '--', want: '--', activeLow: '--', activeHigh: '--', label: '--', format: '--', country: '--', released: '--' };
                 
                 return (
                   <div key={i} style={{ marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '15px' }}>
                     
-                    {/* TOP: Image & Title/Badges */}
                     <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
                       {item.thumbnail ? (
                         <img src={item.thumbnail} alt="match" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '4px', flexShrink: 0 }} />
@@ -194,29 +192,40 @@ export default function Home() {
                       )}
                       
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                        {/* Title strictly left-aligned */}
-                        <a href={item.link} target="_blank" rel="noreferrer" style={{ display: 'block', textAlign: 'left', fontWeight: 'bold', fontSize: '14px', marginBottom: '8px', color: '#0056b3', textDecoration: 'none', whiteSpace: 'normal', wordBreak: 'break-word' }}>
+                        <a href={item.link} target="_blank" rel="noreferrer" style={{ display: 'block', textAlign: 'left', fontWeight: 'bold', fontSize: '14px', marginBottom: '10px', color: '#0056b3', textDecoration: 'none', whiteSpace: 'normal', wordBreak: 'break-word' }}>
                           {String(item.title || "")}
                         </a>
                         
-                        {/* Plumped up, Centered Badges */}
-                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap', marginTop: 'auto', marginBottom: '4px' }}>
-                          <div style={{ backgroundColor: '#eaf4ea', border: '1px solid #c8e6c9', borderRadius: '4px', padding: '4px 10px', fontSize: '13px' }}>
-                            <span style={{ color: '#2e7d32', fontWeight: 'bold' }}>Have:</span> <strong style={{ fontSize: '14px', color: '#1b5e20' }}>{dData.have}</strong>
+                        <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          {/* LINE 1: HAVE & WANT */}
+                          <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                            <div style={{ backgroundColor: '#eaf4ea', border: '1px solid #c8e6c9', borderRadius: '4px', padding: '4px 10px', fontSize: '13px' }}>
+                              <span style={{ color: '#2e7d32', fontWeight: 'bold' }}>Have:</span> <strong style={{ fontSize: '14px', color: '#1b5e20' }}>{dData.have}</strong>
+                            </div>
+                            <div style={{ backgroundColor: '#fff3e0', border: '1px solid #ffe0b2', borderRadius: '4px', padding: '4px 10px', fontSize: '13px' }}>
+                              <span style={{ color: '#e65100', fontWeight: 'bold' }}>Want:</span> <strong style={{ fontSize: '14px', color: '#b71c1c' }}>{dData.want}</strong>
+                            </div>
                           </div>
-                          <div style={{ backgroundColor: '#fff3e0', border: '1px solid #ffe0b2', borderRadius: '4px', padding: '4px 10px', fontSize: '13px' }}>
-                            <span style={{ color: '#e65100', fontWeight: 'bold' }}>Want:</span> <strong style={{ fontSize: '14px', color: '#b71c1c' }}>{dData.want}</strong>
-                          </div>
-                          {showLow && dData.activeLow !== '--' && (
-                             <div style={{ backgroundColor: '#e3f2fd', border: '1px solid #bbdefb', borderRadius: '4px', padding: '4px 10px', fontSize: '13px' }}>
-                               <span style={{ color: '#1565c0', fontWeight: 'bold' }}>Low:</span> <strong style={{ fontSize: '14px', color: '#0d47a1' }}>{dData.activeLow}</strong>
-                             </div>
+
+                          {/* LINE 2: MARKET LOW & HIGH */}
+                          {showMarket && (dData.activeLow !== '--' || dData.activeHigh !== '--') && (
+                            <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                              {dData.activeLow !== '--' && (
+                                 <div style={{ backgroundColor: '#e3f2fd', border: '1px solid #bbdefb', borderRadius: '4px', padding: '4px 10px', fontSize: '13px' }}>
+                                   <span style={{ color: '#1565c0', fontWeight: 'bold' }}>Low:</span> <strong style={{ fontSize: '14px', color: '#0d47a1' }}>{dData.activeLow}</strong>
+                                 </div>
+                              )}
+                              {dData.activeHigh !== '--' && (
+                                 <div style={{ backgroundColor: '#e3f2fd', border: '1px solid #bbdefb', borderRadius: '4px', padding: '4px 10px', fontSize: '13px' }}>
+                                   <span style={{ color: '#1565c0', fontWeight: 'bold' }}>High:</span> <strong style={{ fontSize: '14px', color: '#0d47a1' }}>{dData.activeHigh}</strong>
+                                 </div>
+                              )}
+                            </div>
                           )}
                         </div>
                       </div>
                     </div>
 
-                    {/* BOTTOM: Full Width Tight Metadata Lines */}
                     <div style={{ fontSize: '12px', color: '#333', marginTop: '10px' }}>
                       {dData.format && dData.format !== '--' && (
                         <div style={{ marginBottom: '2px', textAlign: 'left' }}>
@@ -224,7 +233,6 @@ export default function Home() {
                         </div>
                       )}
                       
-                      {/* GUARANTEED SINGLE LINE METADATA */}
                       <div style={{ display: 'flex', gap: '15px', flexWrap: 'nowrap', overflow: 'hidden', whiteSpace: 'nowrap', textAlign: 'left' }}>
                         {dData.label && dData.label !== '--' && (
                           <div><span style={{ color: '#4527a0', fontWeight: 'bold' }}>Label:</span> {String(dData.label)}</div>
@@ -276,12 +284,10 @@ export default function Home() {
                     )}
                     
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                      {/* Left-Aligned Title */}
                       <a href={item.link} target="_blank" rel="noreferrer" style={{ display: 'block', textAlign: 'left', fontWeight: 'bold', fontSize: '14px', marginBottom: '6px', textDecoration: 'none', color: '#333', whiteSpace: 'normal', wordBreak: 'break-word' }}>
                         {String(item.title || "")}
                       </a>
                       
-                      {/* Centered Price & Shipping */}
                       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', marginTop: 'auto', marginBottom: '2px' }}>
                         <span style={{ fontWeight: 'bold', color: item.price ? 'green' : '#666', fontSize: '15px' }}>
                           {typeof item.price === 'string' && item.price ? item.price : "View on eBay"}
