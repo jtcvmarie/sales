@@ -6,6 +6,7 @@ export async function POST(request) {
     const file = formData.get('image'); 
     const manualQuery = formData.get('query'); 
     const soldOnlyQuery = formData.get('soldQuery'); 
+    const syncMode = formData.get('syncMode'); // New override flag
 
     const serpapiKey = process.env.SERPAPI_KEY;
     const discogsToken = process.env.DISCOGS_TOKEN;
@@ -15,61 +16,61 @@ export async function POST(request) {
     };
 
     // ==========================================
-    // HELPER: Strict eBay Sold Scraper
+    // HELPER: Indestructible eBay Sold Scraper
     // ==========================================
-    async function fetchEbaySold(queryStr, apiKey) {
+    async function fetchEbaySold(queryStr, apiKey, forceSync) {
       if (!queryStr || !queryStr.trim()) return { results: [], notice: null, debug: "Empty query provided." };
       let results = [];
       let notice = null;
-      let debugMsg = "HTML Scraper: ";
+      let debugMsg = forceSync ? "Sync Mode (Proxy): " : "HTML Scraper: ";
 
-      try {
-        const soldUrl = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(queryStr)}&LH_Sold=1&LH_Complete=1`;
-        const res = await fetch(soldUrl, { headers: botHeaders });
-        const html = await res.text();
-        
-        if (html.match(/Matching fewer words/i) || html.match(/removed some search terms/i) || html.match(/No exact matches found/i)) {
-            notice = "No exact matches found. Displaying results matching fewer words:";
-        }
+      // If forceSync is true, we skip the HTML scraper (which got blocked) and go straight to proxies
+      if (!forceSync) {
+          try {
+            const soldUrl = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(queryStr)}&LH_Sold=1&LH_Complete=1`;
+            const res = await fetch(soldUrl, { headers: botHeaders });
+            const html = await res.text();
+            
+            if (html.match(/Matching fewer words/i) || html.match(/removed some search terms/i) || html.match(/No exact matches found/i)) {
+                notice = "No exact matches found. Displaying results matching fewer words:";
+            }
 
-        const blocks = html.split(/class="[^"]*s-item__info[^"]*"/i).slice(1);
-        
-        for (let block of blocks) {
-          if (block.toLowerCase().includes('shop on ebay')) continue;
-          
-          // THE FIX: Strict Sold Verification. 
-          // If eBay tries to soft-block us and serve Active listings, the block will NOT contain the 'POSITIVE' class.
-          // If it lacks 'POSITIVE', we throw the result in the trash so we don't lie to the user.
-          if (!block.includes('POSITIVE')) continue;
-          
-          let titleMatch = block.match(/<div[^>]*s-item__title[^>]*>([\s\S]*?)<\/div>/i);
-          if (!titleMatch) continue;
-          let title = titleMatch[1].replace(/<[^>]+>/g, '').replace(/New Listing/i, '').trim();
+            const blocks = html.split(/class="[^"]*s-item__info[^"]*"/i).slice(1);
+            
+            for (let block of blocks) {
+              if (block.toLowerCase().includes('shop on ebay')) continue;
+              
+              // V37 FIX: Only look for POSITIVE inside the Price or Date span. Ignore seller feedback.
+              let priceMatch = block.match(/<span[^>]*POSITIVE[^>]*>([\s\S]*?\$[\d,.]+)<\/span>/i) || block.match(/<span[^>]*s-item__price[^>]*>([\s\S]*?)<\/span>/i);
+              let dateMatch = block.match(/<span[^>]*POSITIVE[^>]*>([\s\S]*?202[0-9])<\/span>/i) || block.match(/<div[^>]*s-item__title--tag[^>]*>([\s\S]*?)<\/div>/i);
+              
+              // If it doesn't have a sold price class or a sold date tag, it's an active listing. Trash it.
+              if (!block.match(/POSITIVE/i) && !dateMatch) continue;
 
-          let linkMatch = block.match(/href="([^"]+)"/i);
-          let link = linkMatch ? linkMatch[1].split('?')[0] + "?orig_cvip=true" : "";
+              let titleMatch = block.match(/<div[^>]*s-item__title[^>]*>([\s\S]*?)<\/div>/i);
+              if (!titleMatch) continue;
+              let title = titleMatch[1].replace(/<[^>]+>/g, '').replace(/New Listing/i, '').trim();
 
-          // Ensure we are pulling the specific green price
-          let priceMatch = block.match(/<span[^>]*POSITIVE[^>]*>([\s\S]*?\$[\d,.]+)<\/span>/i) || block.match(/<span[^>]*s-item__price[^>]*>([\s\S]*?)<\/span>/i);
-          let price = priceMatch ? priceMatch[1].replace(/<[^>]+>/g, '').trim() : "";
+              let linkMatch = block.match(/href="([^"]+)"/i);
+              let link = linkMatch ? linkMatch[1].split('?')[0] + "?orig_cvip=true" : "";
 
-          let dateMatch = block.match(/<div[^>]*s-item__title--tag[^>]*>([\s\S]*?)<\/div>/i) || 
-                          block.match(/<span[^>]*POSITIVE[^>]*>([\s\S]*?202[0-9])<\/span>/i);
-          let date = dateMatch ? dateMatch[1].replace(/<[^>]+>/g, '').trim() : "Sold";
+              let price = priceMatch ? priceMatch[1].replace(/<[^>]+>/g, '').trim() : "";
+              let date = dateMatch ? dateMatch[1].replace(/<[^>]+>/g, '').trim() : "Sold";
 
-          if (title && link) results.push({ title, link, price, condition: date });
-          if (results.length >= 15) break;
-        }
-        debugMsg += `Verified ${results.length} strictly sold items. `;
-      } catch (e) {
-        debugMsg += `Error (${e.message}). `;
+              if (title && link) results.push({ title, link, price, condition: date });
+              if (results.length >= 15) break;
+            }
+            debugMsg += `Verified ${results.length} strictly sold items. `;
+          } catch (e) {
+            debugMsg += `Error (${e.message}). `;
+          }
       }
 
-      // FALLBACK TO SERPAPI
+      // FALLBACK TO SERPAPI (Or direct route if Sync Button clicked)
       if (results.length === 0 && apiKey) {
-        debugMsg += "Fallback API: ";
+        if (!forceSync) debugMsg += "Fallback API: ";
         try {
-          const serpUrl = `https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(queryStr)}&LH_Sold=1&LH_Complete=1&api_key=${apiKey}`;
+          const serpUrl = `https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(queryStr)}&show_only=Sold&api_key=${apiKey}`;
           const serpRes = await fetch(serpUrl);
           const serpJson = await serpRes.json();
           
@@ -79,18 +80,17 @@ export async function POST(request) {
 
           if (serpJson.organic_results && serpJson.organic_results.length > 0) {
             for (let item of serpJson.organic_results) {
-               // STRICT API VERIFICATION: SerpApi must confirm it's sold
-               let condition = item.condition || "";
+               let condition = item.condition || "Sold";
                let isSold = condition.toLowerCase().includes('sold') || (item.extensions && item.extensions.some(e => e.toLowerCase().includes('sold')));
                
                if (isSold || item.price?.raw) {
                    let safeLink = item.link;
                    if (!safeLink.includes('orig_cvip')) safeLink += safeLink.includes('?') ? '&orig_cvip=true' : '?orig_cvip=true';
-                   results.push({ title: item.title, link: safeLink, price: item.price?.raw || null, condition: condition || "Sold" });
+                   results.push({ title: item.title, link: safeLink, price: item.price?.raw || null, condition: condition });
                }
                if (results.length >= 15) break;
             }
-            debugMsg += `Verified ${results.length} items.`;
+            debugMsg += `Pulled ${results.length} proxy items.`;
           } else {
             debugMsg += "0 items found.";
           }
@@ -102,8 +102,12 @@ export async function POST(request) {
       return { results, notice, debug: debugMsg };
     }
 
+    // ==========================================
+    // ROUTE 1: Dedicated eBay Sold-Only Request (Sync or Manual)
+    // ==========================================
     if (soldOnlyQuery) {
-      const soldData = await fetchEbaySold(soldOnlyQuery, serpapiKey);
+      const isSync = syncMode === 'true';
+      const soldData = await fetchEbaySold(soldOnlyQuery, serpapiKey, isSync);
       return NextResponse.json({ 
           ebaySoldResults: soldData.results, 
           soldNotice: soldData.notice,
@@ -117,6 +121,9 @@ export async function POST(request) {
     let discogsLinks = [];
     let ebayLinks = [];
 
+    // ==========================================
+    // ROUTE 2: Image Upload (Google Lens)
+    // ==========================================
     if (file) {
       const uploadData = new FormData();
       uploadData.append('image', file);
@@ -136,11 +143,14 @@ export async function POST(request) {
       discogsLinks = visualMatches.filter(m => m.link && m.link.toLowerCase().includes('discogs.com')).slice(0, 15);
       ebayLinks = visualMatches.filter(m => m.link && m.link.toLowerCase().includes('ebay.com')).slice(0, 6);
     } 
+    // ==========================================
+    // ROUTE 3: Manual Text Search
+    // ==========================================
     else if (manualQuery) {
       textQuery = manualQuery;
       
       const dPromise = discogsToken ? fetch(`https://api.discogs.com/database/search?q=${encodeURIComponent(textQuery)}&type=release&per_page=15`, {
-        headers: { 'User-Agent': 'RecordLens/9.0', 'Authorization': `Discogs token=${discogsToken}` }
+        headers: { 'User-Agent': 'RecordLens/10.0', 'Authorization': `Discogs token=${discogsToken}` }
       }).then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null);
       
       const ePromise = fetch(`https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(textQuery)}&api_key=${serpapiKey}`)
@@ -152,13 +162,17 @@ export async function POST(request) {
       if (eJson && eJson.organic_results) ebayLinks = eJson.organic_results.slice(0, 6).map(r => ({ link: r.link, title: r.title, thumbnail: r.thumbnail, price: { raw: r.price?.raw } }));
     }
 
+    // ==========================================
+    // SIMULTANEOUS DATA PROCESSING
+    // ==========================================
+
     const discogsTask = Promise.all(discogsLinks.map(async (match) => {
       let discogsData = { have: '--', want: '--' };
       if (discogsToken) {
         const idMatch = match.link.match(/\/(?:release|master|sell\/(?:release|item|history))\/(\d+)/i);
         if (idMatch) {
           let id = idMatch[1];
-          const headers = { 'User-Agent': 'RecordLens/9.0', 'Authorization': `Discogs token=${discogsToken}` };
+          const headers = { 'User-Agent': 'RecordLens/10.0', 'Authorization': `Discogs token=${discogsToken}` };
           try {
             if (match.link.includes('/master/')) {
               const mRes = await fetch(`https://api.discogs.com/masters/${id}`, { headers });
@@ -187,9 +201,8 @@ export async function POST(request) {
           const html = await res.text();
           
           const metaPrice = html.match(/itemprop="price" content="([^"]+)"/i);
-          if (metaPrice) {
-            price = `$${metaPrice[1]}`;
-          } else {
+          if (metaPrice) price = `$${metaPrice[1]}`;
+          else {
             const backupMatch = html.match(/class="ux-textspans ux-textspans--BOLD"[^>]*>\s*([A-Z£€]*\s*\$?\s*[\d,.]+)\s*<\/span>/i) || html.match(/id="prcIsum_bidPrice"[^>]*>\s*([A-Z£€]*\s*\$?\s*[\d,.]+)/i);
             if (backupMatch) price = backupMatch[1].trim();
           }
@@ -198,7 +211,7 @@ export async function POST(request) {
       return { title: m.title, link: m.link, thumbnail: m.thumbnail, price };
     }));
 
-    const ebaySoldTask = fetchEbaySold(textQuery, serpapiKey);
+    const ebaySoldTask = fetchEbaySold(textQuery, serpapiKey, false);
 
     const [discogsMatches, ebayActiveMatches, soldData] = await Promise.all([ discogsTask, ebayActiveTask, ebaySoldTask ]);
 
