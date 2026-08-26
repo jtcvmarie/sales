@@ -94,10 +94,10 @@ export default function Home() {
     }
   };
 
-  // Custom Colorizer for Media Formats
+  // Custom Colorizer for Deep Media Formats
   const renderFormat = (fmtStr) => {
     if (!fmtStr || fmtStr === '--') return '--';
-    const formatKeywords = ['vinyl', 'lp', '45', '78', '33', 'shellac', 'cassette'];
+    const formatKeywords = ['vinyl', 'lp', '45', '78', '33', 'shellac', 'cassette', '7"', '10"', '12"'];
     const parts = fmtStr.split(', ');
     
     return parts.map((part, i) => {
@@ -117,7 +117,7 @@ export default function Home() {
 
   return (
     <main style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto', backgroundColor: '#fff', paddingBottom: '100px' }}>
-      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V43</h2>
+      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V44</h2>
       
       <input type="file" accept="image/*" capture="environment" onChange={handleCapture} style={{ padding: '10px', fontSize: '16px', marginBottom: '12px', width: '100%', backgroundColor: '#f9f9f9', border: '1px solid #ccc', borderRadius: '5px' }} />
       
@@ -165,22 +165,23 @@ export default function Home() {
                 const dData = item.discogsData || { have: '--', want: '--', activeLow: '--', label: '--', format: '--', country: '--', released: '--' };
                 
                 return (
-                  <div key={i} style={{ marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '20px' }}>
+                  <div key={i} style={{ marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '15px' }}>
                     
-                    {/* TOP: Image, Title, Badges */}
-                    <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
+                    {/* TOP: Image & Centered Title/Badges */}
+                    <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
                       {item.thumbnail ? (
                         <img src={item.thumbnail} alt="match" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '4px', flexShrink: 0 }} />
                       ) : (
                         <div style={{ width: '80px', height: '80px', backgroundColor: '#eee', borderRadius: '4px', flexShrink: 0 }} />
                       )}
-                      <div style={{ flex: 1 }}>
-                        <a href={item.link} target="_blank" rel="noreferrer" style={{ display: 'block', fontWeight: 'bold', fontSize: '15px', marginBottom: '8px', color: '#0056b3', textDecoration: 'none', whiteSpace: 'normal', wordBreak: 'break-word' }}>
+                      
+                      <div style={{ flex: 1, textAlign: 'center' }}>
+                        <a href={item.link} target="_blank" rel="noreferrer" style={{ display: 'block', fontWeight: 'bold', fontSize: '14px', marginBottom: '6px', color: '#0056b3', textDecoration: 'none', whiteSpace: 'normal', wordBreak: 'break-word' }}>
                           {item.title}
                         </a>
                         
-                        {/* COMPACT BADGES */}
-                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        {/* COMPACT CENTERED BADGES */}
+                        <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', flexWrap: 'wrap' }}>
                           <div style={{ backgroundColor: '#eaf4ea', border: '1px solid #c8e6c9', borderRadius: '4px', padding: '2px 8px', fontSize: '12px' }}>
                             <span style={{ color: '#2e7d32', fontWeight: 'bold' }}>Have:</span> <strong style={{ fontSize: '13px', color: '#1b5e20' }}>{dData.have}</strong>
                           </div>
@@ -196,15 +197,16 @@ export default function Home() {
                       </div>
                     </div>
 
-                    {/* BOTTOM: Full Width Metadata Lines */}
-                    <div style={{ fontSize: '13px', color: '#333', lineHeight: '1.5', marginTop: '12px' }}>
+                    {/* BOTTOM: Full Width Tight Metadata Lines */}
+                    <div style={{ fontSize: '12px', color: '#333', marginTop: '8px' }}>
                       {dData.format && dData.format !== '--' && (
-                        <div style={{ marginBottom: '4px' }}>
+                        <div style={{ marginBottom: '2px', textAlign: 'left' }}>
                           <span style={{ color: '#4527a0', fontWeight: 'bold' }}>Format:</span> {renderFormat(dData.format)}
                         </div>
                       )}
                       
-                      <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+                      {/* GUARANTEED SINGLE LINE METADATA */}
+                      <div style={{ display: 'flex', gap: '15px', flexWrap: 'nowrap', overflow: 'hidden', whiteSpace: 'nowrap' }}>
                         {dData.label && dData.label !== '--' && (
                           <div><span style={{ color: '#4527a0', fontWeight: 'bold' }}>Label:</span> {dData.label}</div>
                         )}
@@ -246,21 +248,31 @@ export default function Home() {
             ) : (
               ebayActive.map((item, i) => (
                 <div key={i} style={{ marginBottom: '12px', borderBottom: '1px solid #eee', paddingBottom: '12px' }}>
+                  
                   <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
                     {item.thumbnail ? (
                       <img src={item.thumbnail} alt="match" style={{ width: '70px', height: '70px', objectFit: 'cover', borderRadius: '4px', flexShrink: 0 }} />
                     ) : (
                       <div style={{ width: '70px', height: '70px', backgroundColor: '#eee', borderRadius: '4px', flexShrink: 0 }} />
                     )}
-                    <div style={{ flex: 1 }}>
-                      <a href={item.link} target="_blank" rel="noreferrer" style={{ display: 'block', fontWeight: 'bold', fontSize: '14px', marginBottom: '4px', textDecoration: 'none', color: '#333', whiteSpace: 'normal', wordBreak: 'break-word' }}>
+                    
+                    {/* CENTERED EBAY TITLE & PRICE */}
+                    <div style={{ flex: 1, textAlign: 'center' }}>
+                      <a href={item.link} target="_blank" rel="noreferrer" style={{ display: 'block', fontWeight: 'bold', fontSize: '14px', marginBottom: '6px', textDecoration: 'none', color: '#333', whiteSpace: 'normal', wordBreak: 'break-word' }}>
                         {item.title}
                       </a>
-                      <div style={{ fontWeight: 'bold', color: item.price ? 'green' : '#666', fontSize: '15px' }}>
-                        {item.price || "View on eBay"}
+                      
+                      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontWeight: 'bold', color: item.price ? 'green' : '#666', fontSize: '15px' }}>
+                          {item.price || "View on eBay"}
+                        </span>
+                        {item.shipping && (
+                          <span style={{ fontSize: '12px', color: '#777' }}>{item.shipping}</span>
+                        )}
                       </div>
                     </div>
                   </div>
+
                 </div>
               ))
             )
@@ -270,12 +282,10 @@ export default function Home() {
 
       {/* 3. EBAY SOLD GATEWAY */}
       {hasSearched && (
-        <div style={{ marginBottom: '40px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', backgroundColor: '#8b0000', padding: '10px 15px', borderRadius: '4px' }}>
-            <div onClick={() => setIsEbaySoldOpen(!isEbaySoldOpen)} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-              <h3 style={{ margin: 0, color: 'white' }}>eBay Sold History</h3>
-              <span style={{ fontSize: '18px', fontWeight: 'bold', color: 'white' }}>{isEbaySoldOpen ? '–' : '+'}</span>
-            </div>
+        <div style={{ marginBottom: '40px', borderTop: '4px solid #8b0000', paddingTop: '20px' }}>
+          <div onClick={() => setIsEbaySoldOpen(!isEbaySoldOpen)} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '15px', backgroundColor: '#8b0000', padding: '10px 15px', borderRadius: '4px', cursor: 'pointer' }}>
+            <h3 style={{ margin: 0, color: 'white' }}>eBay Sold History</h3>
+            <span style={{ fontSize: '18px', fontWeight: 'bold', color: 'white' }}>{isEbaySoldOpen ? '–' : '+'}</span>
           </div>
 
           {isEbaySoldOpen && (
