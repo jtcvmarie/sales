@@ -4,15 +4,12 @@ import { useState } from 'react';
 export default function Home() {
   const [discogs, setDiscogs] = useState([]);
   const [ebayActive, setEbayActive] = useState([]);
-  const [ebaySold, setEbaySold] = useState([]);
-  const [soldNotice, setSoldNotice] = useState(null);
-  const [soldDebug, setSoldDebug] = useState(null); 
   
+  // Independent Search Strings
   const [mainQuery, setMainQuery] = useState("");
   const [soldQuery, setSoldQuery] = useState("");
   
   const [loadingMain, setLoadingMain] = useState(false);
-  const [loadingSold, setLoadingSold] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [hasSearched, setHasSearched] = useState(false);
 
@@ -37,8 +34,6 @@ export default function Home() {
     setLoadingMain(true); 
     setErrorMsg(""); 
     setHasSearched(false);
-    setSoldNotice(null);
-    setSoldDebug(null);
     
     try {
       const smallFile = await shrinkImage(file);
@@ -53,9 +48,6 @@ export default function Home() {
       
       setDiscogs(data.discogsMatches || []);
       setEbayActive(data.ebayActiveMatches || []);
-      setEbaySold(data.ebaySoldResults || []);
-      setSoldNotice(data.soldNotice || null);
-      setSoldDebug(data.soldDebug || null);
       
       setMainQuery(data.textQuery || "");
       setSoldQuery(data.textQuery || "");
@@ -72,8 +64,6 @@ export default function Home() {
     setLoadingMain(true);
     setErrorMsg("");
     setHasSearched(false);
-    setSoldNotice(null);
-    setSoldDebug(null);
 
     try {
       const formData = new FormData();
@@ -87,9 +77,6 @@ export default function Home() {
       
       setDiscogs(data.discogsMatches || []);
       setEbayActive(data.ebayActiveMatches || []);
-      setEbaySold(data.ebaySoldResults || []);
-      setSoldNotice(data.soldNotice || null);
-      setSoldDebug(data.soldDebug || null);
       setSoldQuery(data.textQuery || mainQuery);
       setHasSearched(true);
     } catch (error) {
@@ -99,38 +86,14 @@ export default function Home() {
     }
   };
 
-  const handleSoldSearch = async (isSync = false) => {
-    if (!soldQuery.trim()) return;
-    setLoadingSold(true);
-    setSoldNotice(null);
-    setSoldDebug(null);
-    try {
-      const formData = new FormData();
-      formData.append('soldQuery', soldQuery);
-      if (isSync) formData.append('syncMode', 'true');
-      
-      const res = await fetch('/api/search', { method: 'POST', body: formData });
-      if (!res.ok) throw new Error(`Server returned status ${res.status}`);
-      
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      
-      setEbaySold(data.ebaySoldResults || []);
-      setSoldNotice(data.soldNotice || null);
-      setSoldDebug(data.soldDebug || null);
-    } catch (error) {
-      alert("Sold Search Error: " + error.message);
-    } finally {
-      setLoadingSold(false);
-    }
-  };
-
   const ebayActiveDirectUrl = mainQuery ? `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(mainQuery)}` : '#';
+  
+  // This automatically generates the correct eBay URL in real-time as you type
   const ebaySoldDirectUrl = soldQuery ? `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(soldQuery)}&LH_Sold=1&LH_Complete=1` : '#';
 
   return (
     <main style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto', backgroundColor: '#fff', paddingBottom: '100px' }}>
-      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V40</h2>
+      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V41</h2>
       
       <input type="file" accept="image/*" capture="environment" onChange={handleCapture} style={{ padding: '10px', fontSize: '16px', marginBottom: '12px', width: '100%', backgroundColor: '#f9f9f9', border: '1px solid #ccc', borderRadius: '5px' }} />
       
@@ -152,7 +115,7 @@ export default function Home() {
         </button>
       </div>
 
-      {loadingMain && <p style={{ fontWeight: 'bold', color: '#0070f3' }}>Fetching market data as fast as possible...</p>}
+      {loadingMain && <p style={{ fontWeight: 'bold', color: '#0070f3' }}>Fetching market data...</p>}
       {errorMsg && <p style={{ color: 'red', fontWeight: 'bold', backgroundColor: '#fee', padding: '10px', borderRadius: '4px' }}>{errorMsg}</p>}
       
       {/* DISCOGS SECTION */}
@@ -168,7 +131,7 @@ export default function Home() {
             </div>
           ) : (
             discogs.map((item, i) => {
-              const dData = item.discogsData || { have: '--', want: '--' };
+              const dData = item.discogsData || { have: '--', want: '--', activeLow: '--' };
               
               return (
                 <div key={i} style={{ marginBottom: '15px', borderBottom: '1px solid #eee', paddingBottom: '15px' }}>
@@ -183,12 +146,16 @@ export default function Home() {
                         {item.title}
                       </a>
                       
-                      <div style={{ display: 'flex', gap: '12px' }}>
+                      {/* EMPHASIZED HAVE, WANT, AND BLUE LOW STATS */}
+                      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                         <div style={{ backgroundColor: '#eaf4ea', border: '1px solid #c8e6c9', borderRadius: '4px', padding: '4px 10px', fontSize: '13px' }}>
                           <span style={{ color: '#2e7d32', fontWeight: 'bold' }}>Have:</span> <strong style={{ fontSize: '14px', color: '#1b5e20' }}>{dData.have}</strong>
                         </div>
                         <div style={{ backgroundColor: '#fff3e0', border: '1px solid #ffe0b2', borderRadius: '4px', padding: '4px 10px', fontSize: '13px' }}>
                           <span style={{ color: '#e65100', fontWeight: 'bold' }}>Want:</span> <strong style={{ fontSize: '14px', color: '#b71c1c' }}>{dData.want}</strong>
+                        </div>
+                        <div style={{ backgroundColor: '#e3f2fd', border: '1px solid #bbdefb', borderRadius: '4px', padding: '4px 10px', fontSize: '13px' }}>
+                          <span style={{ color: '#1565c0', fontWeight: 'bold' }}>Low:</span> <strong style={{ fontSize: '14px', color: '#0d47a1' }}>{dData.activeLow}</strong>
                         </div>
                       </div>
                     </div>
@@ -200,7 +167,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* EBAY ACTIVE SECTION */}
+      {/* EBAY ACTIVE SECTION (Now shows up to 10) */}
       {hasSearched && (
         <div style={{ marginBottom: '40px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', backgroundColor: '#0064d2', padding: '10px 15px', borderRadius: '4px' }}>
@@ -238,72 +205,32 @@ export default function Home() {
         </div>
       )}
 
-      {/* EBAY SOLD SECTION */}
+      {/* NEW EBAY SOLD GATEWAY */}
       {hasSearched && (
         <div style={{ marginBottom: '40px', borderTop: '4px solid #8b0000', paddingTop: '20px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-            <h3 style={{ margin: 0, color: '#8b0000' }}>eBay Sold History</h3>
-            <a href={ebaySoldDirectUrl} target="_blank" rel="noreferrer" style={{ fontSize: '13px', color: '#0064d2', textDecoration: 'none', fontWeight: 'bold', border: '1px solid #0064d2', padding: '4px 8px', borderRadius: '4px' }}>
-              View All on eBay →
+          <h3 style={{ margin: '0 0 15px 0', color: '#8b0000' }}>eBay Sold History</h3>
+
+          <div style={{ padding: '15px', backgroundColor: '#fcf2f2', borderRadius: '6px', border: '1px solid #f5c6cb' }}>
+            <p style={{ margin: '0 0 8px 0', fontSize: '13px', color: '#721c24', fontWeight: 'bold' }}>Verify Sold Market Pricing:</p>
+            
+            <input 
+              type="text" 
+              value={soldQuery} 
+              onChange={(e) => setSoldQuery(e.target.value)} 
+              placeholder="Edit query for sold search..."
+              style={{ width: '100%', padding: '12px', fontSize: '15px', borderRadius: '4px', border: '1px solid #d9534f', marginBottom: '12px', boxSizing: 'border-box' }}
+            />
+            
+            {/* The main gateway button. Completely immune to bots because it routes through the user's browser. */}
+            <a 
+              href={ebaySoldDirectUrl} 
+              target="_blank" 
+              rel="noreferrer" 
+              style={{ display: 'block', textAlign: 'center', padding: '12px', backgroundColor: '#8b0000', color: '#fff', textDecoration: 'none', borderRadius: '5px', fontWeight: 'bold', fontSize: '15px' }}
+            >
+              View Sold Listings on eBay →
             </a>
           </div>
-
-          <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: '#fcf2f2', borderRadius: '6px', border: '1px solid #f5c6cb' }}>
-            <p style={{ margin: '0 0 6px 0', fontSize: '12px', color: '#721c24', fontWeight: 'bold' }}>Edit Sold Search Query:</p>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              <input 
-                type="text" 
-                value={soldQuery} 
-                onChange={(e) => setSoldQuery(e.target.value)} 
-                placeholder="Custom eBay sold query..."
-                style={{ flex: '1 1 100%', padding: '10px', fontSize: '14px', borderRadius: '4px', border: '1px solid #d9534f' }}
-              />
-              <button 
-                onClick={() => handleSoldSearch(false)}
-                disabled={loadingSold}
-                style={{ flex: 1, padding: '10px 14px', backgroundColor: '#8b0000', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', whiteSpace: 'nowrap' }}
-              >
-                {loadingSold ? "Searching..." : "Search Sold"}
-              </button>
-              <button 
-                onClick={() => handleSoldSearch(true)}
-                disabled={loadingSold}
-                style={{ flex: 1, padding: '10px 14px', backgroundColor: '#0064d2', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', whiteSpace: 'nowrap' }}
-              >
-                {loadingSold ? "Syncing..." : "Sync / Resync"}
-              </button>
-            </div>
-          </div>
-
-          {soldNotice && (
-            <div style={{ padding: '10px', backgroundColor: '#fff3cd', color: '#856404', border: '1px solid #ffeeba', borderRadius: '6px', marginBottom: '15px', fontSize: '13px', fontWeight: 'bold' }}>
-              ⚠️ {soldNotice}
-            </div>
-          )}
-
-          {ebaySold.length === 0 ? (
-            <div style={{ padding: '20px', backgroundColor: '#fff5f5', border: '1px solid #fcdcdc', borderRadius: '6px', textAlign: 'center' }}>
-              <p style={{ fontSize: '14px', color: '#8b0000', margin: 0, fontWeight: 'bold' }}>0 Sold Results Found.</p>
-              {soldDebug && (
-                 <p style={{ fontSize: '11px', color: '#d93025', marginTop: '10px', fontWeight: 'bold', backgroundColor: '#ffe6e6', padding: '8px', borderRadius: '4px', display: 'inline-block' }}>
-                    Backend Diagnostic: {soldDebug}
-                 </p>
-              )}
-            </div>
-          ) : (
-            ebaySold.map((item, i) => (
-              <div key={i} style={{ marginBottom: '10px', padding: '10px', backgroundColor: '#fff5f5', borderRadius: '6px', border: '1px solid #fcdcdc' }}>
-                <a href={item.link} target="_blank" rel="noreferrer" style={{ display: 'block', fontSize: '13px', marginBottom: '6px', color: '#333', textDecoration: 'none' }}>
-                  {item.title}
-                </a>
-                <div style={{ display: 'flex', alignItems: 'center' }}>
-                  {item.price && <span style={{ fontWeight: 'bold', color: 'green', fontSize: '15px', marginRight: '10px' }}>{item.price}</span>}
-                  <span style={{ fontSize: '11px', color: 'white', backgroundColor: '#8b0000', padding: '2px 5px', borderRadius: '3px', fontWeight: 'bold' }}>SOLD</span>
-                  {item.condition && <span style={{ fontSize: '12px', color: 'gray', marginLeft: 'auto' }}>{item.condition}</span>}
-                </div>
-              </div>
-            ))
-          )}
         </div>
       )}
     </main>
