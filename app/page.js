@@ -4,12 +4,16 @@ import { useState } from 'react';
 export default function Home() {
   const [discogs, setDiscogs] = useState([]);
   const [ebayActive, setEbayActive] = useState([]);
+  
+  // Sold Search States
+  const [editableQuery, setEditableQuery] = useState("");
   const [ebaySold, setEbaySold] = useState([]);
-  const [textQuery, setTextQuery] = useState("");
+  const [soldSearched, setSoldSearched] = useState(false);
+  const [soldLoading, setSoldLoading] = useState(false);
+  
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [hasSearched, setHasSearched] = useState(false);
-  const [copySuccess, setCopySuccess] = useState(false);
 
   const shrinkImage = (file) => { 
     return new Promise((resolve) => {
@@ -34,8 +38,9 @@ export default function Home() {
     setDiscogs([]); 
     setEbayActive([]);
     setEbaySold([]); 
-    setTextQuery(""); 
+    setEditableQuery(""); 
     setHasSearched(false);
+    setSoldSearched(false);
     
     try {
       const smallFile = await shrinkImage(file);
@@ -49,8 +54,7 @@ export default function Home() {
       
       setDiscogs(Array.isArray(data.discogsMatches) ? data.discogsMatches : []);
       setEbayActive(Array.isArray(data.ebayActiveMatches) ? data.ebayActiveMatches : []);
-      setEbaySold(Array.isArray(data.ebaySoldResults) ? data.ebaySoldResults : []);
-      setTextQuery(data.textQuery || "");
+      setEditableQuery(data.textQuery || "");
       setHasSearched(true);
       
     } catch (error) { 
@@ -60,15 +64,42 @@ export default function Home() {
     }
   };
 
-  const ebaySoldDirectUrl = textQuery ? `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(textQuery)}&_sacat=0&_from=R40&rt=nc&LH_Sold=1` : '#';
+  // Dedicated function for the Sold button
+  const handleSoldSearch = async () => {
+      if (!editableQuery.trim()) return;
+      setSoldLoading(true);
+      setSoldSearched(false);
+      setEbaySold([]);
+      
+      try {
+          const res = await fetch('/api/sold', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ query: editableQuery })
+          });
+          
+          if (!res.ok) throw new Error(`Server returned status ${res.status}`);
+          const data = await res.json();
+          if (data.error) throw new Error(data.error);
+          
+          setEbaySold(Array.isArray(data.results) ? data.results : []);
+          setSoldSearched(true);
+      } catch (error) {
+          alert("Sold Search Error: " + error.message);
+      } finally {
+          setSoldLoading(false);
+      }
+  };
+
+  const ebaySoldDirectUrl = editableQuery ? `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(editableQuery)}&_sacat=0&_from=R40&rt=nc&LH_Sold=1` : '#';
 
   return (
     <main style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto', backgroundColor: '#fff', paddingBottom: '100px' }}>
-      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V28</h2>
+      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V29</h2>
       
       <input type="file" accept="image/*" capture="environment" onChange={handleCapture} style={{ padding: '10px', fontSize: '16px', marginBottom: '15px', width: '100%', backgroundColor: '#f9f9f9', border: '1px solid #ccc', borderRadius: '5px' }} />
       
-      {loading && <p style={{ fontWeight: 'bold', color: '#0070f3' }}>Scanning artwork & rapidly pulling active markets...</p>}
+      {loading && <p style={{ fontWeight: 'bold', color: '#0070f3' }}>Scanning artwork & active markets...</p>}
       {errorMsg && <p style={{ color: 'red', fontWeight: 'bold', backgroundColor: '#fee', padding: '10px', borderRadius: '4px' }}>{errorMsg}</p>}
       
       {/* 1. DISCOGS SECTION */}
@@ -82,7 +113,7 @@ export default function Home() {
             </div>
           ) : (
             discogs.map((item, i) => {
-              const dData = item.discogsData || { have:'--', want:'--', rating:'--', ratingsCount:'--', low:'--', high:'--', debug: '' };
+              const dData = item.discogsData || { have:'--', want:'--', rating:'--', ratingsCount:'--', low:'--', high:'--' };
               
               return (
                 <div key={i} style={{ marginBottom: '20px', borderBottom: '2px solid #eee', paddingBottom: '20px' }}>
@@ -94,7 +125,6 @@ export default function Home() {
                     </div>
                   </div>
                   
-                  {/* DISCOGS NEW COMPACT GRID (Active Prices Only) */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '13px', backgroundColor: '#fafafa', padding: '12px', borderRadius: '6px', marginTop: '15px', border: '1px solid #e0e0e0' }}>
                     <div><span style={{color: 'gray'}}>Have:</span> <strong>{dData.have}</strong></div>
                     <div><span style={{color: 'gray'}}>Want:</span> <strong>{dData.want}</strong></div>
@@ -103,13 +133,6 @@ export default function Home() {
                     <div><span style={{color: 'gray'}}>Active Low:</span> <strong style={{color: 'green'}}>{dData.low}</strong></div>
                     <div><span style={{color: 'gray'}}>Active High:</span> <strong style={{color: '#8b0000'}}>{dData.high}</strong></div>
                   </div>
-                  
-                  {/* ERROR OUTPUT (Only shows if there is a real error) */}
-                  {dData.debug && dData.debug.includes("ERROR") && (
-                     <div style={{ color: '#d93025', fontSize: '11px', marginTop: '10px', fontWeight: 'bold', padding: '8px', backgroundColor: '#ffe6e6', borderRadius: '4px' }}>
-                        API DIAGNOSTIC: {dData.debug}
-                     </div>
-                  )}
                 </div>
               )
             })
@@ -133,7 +156,6 @@ export default function Home() {
                   {item.thumbnail ? <img src={item.thumbnail} alt="match" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '4px', flexShrink: 0 }} /> : <div style={{ width: '80px', height: '80px', backgroundColor: '#eee', borderRadius: '4px', flexShrink: 0 }} />}
                   <div style={{ flex: 1 }}>
                     <a href={item.link} target="_blank" rel="noreferrer" style={{ display: 'block', fontWeight: 'bold', fontSize: '14px', marginBottom: '5px' }}>{item.title}</a>
-                    
                     <div style={{ fontWeight: 'bold', color: item.price ? 'green' : '#666', fontSize: '16px', marginBottom: '3px' }}>
                       {item.price || "View on eBay"}
                     </div>
@@ -145,22 +167,42 @@ export default function Home() {
         </div>
       )}
 
-      {/* 3. EBAY SOLD SECTION */}
+      {/* 3. EBAY SOLD EDITABLE WORKFLOW */}
       {hasSearched && (
         <div style={{ marginBottom: '40px', borderTop: '4px solid #8b0000', paddingTop: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
             <h3 style={{ margin: 0, color: '#8b0000' }}>eBay Sold History</h3>
             <a href={ebaySoldDirectUrl} target="_blank" rel="noreferrer" style={{ fontSize: '13px', color: '#0064d2', textDecoration: 'none', fontWeight: 'bold', border: '1px solid #0064d2', padding: '5px 10px', borderRadius: '4px' }}>
-              View All Sold →
+              View URL →
             </a>
           </div>
+
+          {/* EDITABLE QUERY BOX */}
+          <div style={{ marginBottom: '20px', padding: '15px', backgroundColor: '#eef2f5', borderRadius: '8px', border: '1px solid #cddde6' }}>
+              <p style={{ margin: '0 0 8px 0', fontSize: '13px', color: '#555', fontWeight: 'bold' }}>Edit 10-Word Search String:</p>
+              <input 
+                  type="text" 
+                  value={editableQuery} 
+                  onChange={(e) => setEditableQuery(e.target.value)} 
+                  style={{ width: '100%', padding: '10px', fontSize: '15px', borderRadius: '4px', border: '1px solid #aaa', marginBottom: '10px', boxSizing: 'border-box' }}
+              />
+              <button 
+                  onClick={handleSoldSearch}
+                  disabled={soldLoading}
+                  style={{ width: '100%', padding: '12px', backgroundColor: '#8b0000', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', fontSize: '16px' }}
+              >
+                  {soldLoading ? "Searching Sold Listings..." : "Search Sold Listings"}
+              </button>
+          </div>
           
-          {ebaySold.length === 0 ? (
+          {/* RENDER SOLD RESULTS */}
+          {soldSearched && ebaySold.length === 0 && (
              <div style={{ padding: '20px', backgroundColor: '#fff5f5', border: '1px solid #fcdcdc', borderRadius: '6px', textAlign: 'center' }}>
                <p style={{ fontSize: '14px', color: '#8b0000', margin: 0, fontWeight: 'bold' }}>No Sold Results Found.</p>
             </div>
-          ) : (
-            ebaySold.map((item, i) => (
+          )}
+
+          {soldSearched && ebaySold.length > 0 && ebaySold.map((item, i) => (
               <div key={i} style={{ marginBottom: '12px', padding: '12px', backgroundColor: '#fff5f5', borderRadius: '6px', border: '1px solid #fcdcdc' }}>
                 <a href={item.link} target="_blank" rel="noreferrer" style={{ display: 'block', fontSize: '14px', marginBottom: '8px', color: '#333', textDecoration: 'none' }}>{item.title}</a>
                 <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -169,32 +211,10 @@ export default function Home() {
                   {item.condition && <span style={{ fontSize: '12px', color: 'gray', marginLeft: 'auto' }}>{item.condition}</span>}
                 </div>
               </div>
-            ))
-          )}
+          ))}
         </div>
       )}
 
-      {/* 4. STRING SEARCH AND COPY AT THE BOTTOM */}
-      {hasSearched && (
-        <div style={{ padding: '20px', backgroundColor: '#eef2f5', borderRadius: '8px', marginTop: '20px', border: '1px solid #cddde6' }}>
-          <p style={{ margin: '0 0 8px 0', fontSize: '14px', color: '#555', fontWeight: 'bold' }}>Generated 10-Word Search Query:</p>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '16px', color: '#000', wordBreak: 'break-word', paddingRight: '15px' }}>
-              {textQuery}
-            </span>
-            <button 
-              onClick={() => { 
-                navigator.clipboard.writeText(textQuery); 
-                setCopySuccess(true); 
-                setTimeout(() => setCopySuccess(false), 2000); 
-              }}
-              style={{ padding: '10px 16px', backgroundColor: '#0070f3', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', whiteSpace: 'nowrap' }}
-            >
-              {copySuccess ? "Copied!" : "Copy"}
-            </button>
-          </div>
-        </div>
-      )}
     </main>
   );
 }
