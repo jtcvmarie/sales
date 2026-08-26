@@ -10,7 +10,7 @@ export async function POST(request) {
 
     const serpapiKey = process.env.SERPAPI_KEY;
     const discogsToken = process.env.DISCOGS_TOKEN;
-    const botHeaders = { 'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)' };
+    const botHeaders = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36' };
 
     // 1. Upload to SerpApi
     const uploadData = new FormData();
@@ -25,7 +25,7 @@ export async function POST(request) {
     const searchJson = await searchRes.json();
     const visualMatches = searchJson.visual_matches || [];
 
-    // 3. Clean Text Extraction
+    // 3. Unbreakable Text Extraction
     let rawTitle = searchJson.knowledge_graph?.[0]?.title || visualMatches[0]?.title || "Vinyl Record";
     let cleanText = rawTitle.replace(/[-|—–]/g, ' ')
                             .replace(/[^a-zA-Z0-9\s]/g, '')
@@ -34,123 +34,99 @@ export async function POST(request) {
     let textQuery = cleanText.split(' ').slice(0, 5).join(' ');
     if (!textQuery) textQuery = "Vinyl Record";
 
-    // 4. Process Discogs Matches (Transparent Stats Logic)
+    // 4. Process Discogs Matches
     let discogsMatches = [];
     const discogsLinks = visualMatches.filter(m => m.link && m.link.toLowerCase().includes('discogs.com')).slice(0, 5);
     
     for (let match of discogsLinks) {
-        let discogsData = { have: '--', want: '--', rating: '--', ratingsCount: '--', lastSold: 'API Hidden', low: '--', median: '--', high: '--', debug: 'PENDING' };
-        let scrapedSuccessfully = false;
-
-        // Try Disguised Scrape First
-        try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 2000);
-            const dRes = await fetch(match.link, { headers: botHeaders, signal: controller.signal });
-            clearTimeout(timeoutId);
-            
-            const html = await dRes.text();
-            const flatHTML = html.replace(/\r?\n|\r/g, '').replace(/\s+/g, ' ');
-            const ex = (regex) => { const m = flatHTML.match(regex); return m ? m[1].replace(/<[^>]+>/g, '').trim() : null; };
-
-            const haveMatch = ex(/Have(?:<!-- -->)?:\s*<\/span>\s*<a[^>]*>([\d,]+)<\/a>/i);
-            if (haveMatch) {
-                discogsData.have = haveMatch;
-                discogsData.want = ex(/Want(?:<!-- -->)?:\s*<\/span>\s*<a[^>]*>([\d,]+)<\/a>/i) || '--';
-                discogsData.rating = ex(/Avg Rating(?:<!-- -->)?:\s*<\/span>\s*<span>(.*?)<\/span>/i) || '--';
-                discogsData.ratingsCount = ex(/Ratings(?:<!-- -->)?:\s*<\/span>\s*<a[^>]*>([\d,]+)<\/a>/i) || '--';
-                discogsData.lastSold = ex(/Last Sold(?:<!-- -->)?:\s*<\/span>\s*<a[^>]*>.*?<time[^>]*>([^<]+)<\/time>/i) || ex(/Last Sold(?:<!-- -->)?:\s*<\/span>\s*<span>([^<]+)<\/span>/i) || '--';
-                discogsData.low = ex(/Low(?:<!-- -->)?:\s*<\/span>\s*<span>([^<]+)<\/span>/i) || '--';
-                discogsData.median = ex(/Median(?:<!-- -->)?:\s*<\/span>\s*<span>([^<]+)<\/span>/i) || '--';
-                discogsData.high = ex(/High(?:<!-- -->)?:\s*<\/span>\s*<span>([^<]+)<\/span>/i) || '--';
-                discogsData.debug = "SUCCESS (Web Data)";
-                scrapedSuccessfully = true;
-            }
-        } catch(e) {}
-
-        // Fallback to API if Scrape fails
-        if (!scrapedSuccessfully) {
-            if (!discogsToken) {
-                discogsData.debug = "HTML Blocked & No Token Saved";
-            } else {
-                const idMatch = match.link.match(/\/(?:release|master|sell\/(?:release|item|history))\/(\d+)/i);
-                if (idMatch) {
-                    let id = idMatch[1];
-                    const headers = { 'User-Agent': 'RecordLens/1.0', 'Authorization': `Discogs token=${discogsToken}` };
-                    try {
-                        if (match.link.includes('/master/')) {
-                            const mRes = await fetch(`https://api.discogs.com/masters/${id}`, { headers });
-                            if (mRes.ok) id = (await mRes.json()).main_release;
-                        }
-
-                        const [relRes, priceRes] = await Promise.all([
-                            fetch(`https://api.discogs.com/releases/${id}`, { headers }),
-                            fetch(`https://api.discogs.com/marketplace/price_suggestions/${id}`, { headers })
-                        ]);
-
-                        if (relRes.ok) {
-                            const rData = await relRes.json();
-                            discogsData.have = rData.community?.have ?? '--';
-                            discogsData.want = rData.community?.want ?? '--';
-                            discogsData.rating = rData.community?.rating?.average ?? '--';
-                            discogsData.ratingsCount = rData.community?.rating?.count ?? '--';
-                            
-                            // Grabs Current Active Lowest Price as a backup
-                            if (rData.lowest_price) {
-                                discogsData.low = `$${rData.lowest_price.toFixed(2)} (Active)`;
-                            }
-                            discogsData.debug = "SUCCESS (API Data)";
-                        }
-
-                        if (priceRes.ok) {
-                            const pData = await priceRes.json();
-                            const fmt = v => v ? `$${v.toFixed(2)}` : null;
-                            discogsData.low = fmt(pData["Good (G)"]?.value) || discogsData.low; 
-                            discogsData.median = fmt(pData["Very Good Plus (VG+)"]?.value) || '--';
-                            discogsData.high = fmt(pData["Near Mint (NM or M-)"]?.value) || '--';
-                        } else if (priceRes.status === 404) {
-                            // If 404, it means 0 historical sales. Clarify this in the UI.
-                            discogsData.median = "No Sales";
-                            discogsData.high = "No Sales";
-                            if (discogsData.debug === "SUCCESS (API Data)") {
-                                discogsData.debug = "SUCCESS (API Data - 0 Historical Sales)";
-                            }
-                        } else {
-                            discogsData.debug += ` | Pricing API Error ${priceRes.status}`;
-                        }
-                    } catch (err) {
-                        discogsData.debug = `Crash: ${err.message}`;
+        let discogsData = { have: '--', want: '--', rating: '--', ratingsCount: '--', lastSold: 'API Hidden (Captcha Blocked)', low: '--', median: '--', high: '--', debug: 'PENDING' };
+        
+        if (discogsToken) {
+            const idMatch = match.link.match(/\/(?:release|master|sell\/(?:release|item|history))\/(\d+)/i);
+            if (idMatch) {
+                let id = idMatch[1];
+                const headers = { 'User-Agent': 'RecordLens/1.0', 'Authorization': `Discogs token=${discogsToken}` };
+                
+                try {
+                    if (match.link.includes('/master/')) {
+                        const mRes = await fetch(`https://api.discogs.com/masters/${id}`, { headers });
+                        if (mRes.ok) id = (await mRes.json()).main_release;
                     }
-                }
+
+                    const [relRes, priceRes] = await Promise.all([
+                        fetch(`https://api.discogs.com/releases/${id}`, { headers }),
+                        fetch(`https://api.discogs.com/marketplace/price_suggestions/${id}`, { headers })
+                    ]);
+
+                    if (relRes.ok) {
+                        const rData = await relRes.json();
+                        discogsData.have = rData.community?.have ?? '--';
+                        discogsData.want = rData.community?.want ?? '--';
+                        discogsData.rating = rData.community?.rating?.average ?? '--';
+                        discogsData.ratingsCount = rData.community?.rating?.count ?? '--';
+                        
+                        // Explicitly label the fallback active price so it isn't confused with historical low
+                        if (rData.lowest_price) {
+                            discogsData.low = `$${rData.lowest_price.toFixed(2)} (Current Active Low)`;
+                        }
+                        discogsData.debug = "SUCCESS (API Data)";
+                    }
+
+                    if (priceRes.ok) {
+                        const pData = await priceRes.json();
+                        const fmt = v => v ? `$${v.toFixed(2)}` : null;
+                        
+                        // Overwrite with Suggested Pricing algorithm if available
+                        discogsData.low = fmt(pData["Good (G)"]?.value) || discogsData.low; 
+                        discogsData.median = fmt(pData["Very Good Plus (VG+)"]?.value) || '--';
+                        discogsData.high = fmt(pData["Near Mint (NM or M-)"]?.value) || '--';
+                        
+                    } else if (priceRes.status === 404) {
+                        discogsData.median = "No API Price Data";
+                        discogsData.high = "No API Price Data";
+                        discogsData.debug = "SUCCESS (Note: Discogs API has 0 price suggestions for this release)";
+                    } else if (priceRes.status === 500) {
+                        discogsData.median = "API Crash";
+                        discogsData.high = "API Crash";
+                        discogsData.debug = "WARNING: Discogs Server crashed when checking this specific ID (Error 500)";
+                    } else {
+                        discogsData.debug += ` | Pricing API Error ${priceRes.status}`;
+                    }
+                } catch (err) {}
             }
         }
         discogsMatches.push({ title: match.title, link: match.link, thumbnail: match.thumbnail, discogsData });
     }
 
-    // 5. Process eBay Active Matches (Upgraded International / Auction Scraper)
+    // 5. Process eBay Active Matches (Advanced Multi-Pattern Scraper)
     let ebayActiveMatches = [];
     const ebayLinks = visualMatches.filter(m => m.link && m.link.toLowerCase().includes('ebay.com')).slice(0, 5);
     
     for (let m of ebayLinks) {
         let price = m.price?.raw || (m.price?.extracted_value ? `$${m.price.extracted_value}` : null);
         
-        if (!price) {
+        // Force scrape if price is missing OR if it's a mobile link
+        if (!price || m.link.includes('ebay.io')) {
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 1800); 
+                const timeoutId = setTimeout(() => controller.abort(), 2000); 
+                // Using standard browser headers helps prevent eBay from serving an empty mobile shell
                 const res = await fetch(m.link, { headers: botHeaders, signal: controller.signal });
                 clearTimeout(timeoutId);
                 const html = await res.text();
                 
-                // First check hidden meta tag (Super reliable for Buy It Now)
+                // 1. Meta Tag (Most reliable for Buy It Now)
                 const metaPrice = html.match(/itemprop="price" content="([^"]+)"/i);
                 if (metaPrice) {
-                    const cur = html.match(/itemprop="priceCurrency" content="([^"]+)"/i);
-                    price = cur ? `${cur[1]} ${metaPrice[1]}` : `$${metaPrice[1]}`;
+                    price = `$${metaPrice[1]}`;
                 } else {
-                    // Fallback to visual HTML classes (Now catches UK £, Euro €, CAD $, and Auctions)
-                    const backupMatch = html.match(/class="ux-textspans ux-textspans--BOLD"[^>]*>\s*([A-Z£€]*\s*\$?\s*[\d,.]+)\s*<\/span>/i);
-                    if (backupMatch) price = backupMatch[1].trim();
+                    // 2. Fallback Regex patterns for Auctions, Mobile layouts, and UK/Canada currencies
+                    const mobileMatch = html.match(/class="main-price-with-shipping"[^>]*>\s*([A-Z£€]*\s*\$?\s*[\d,.]+)/i);
+                    const bidMatch = html.match(/id="prcIsum_bidPrice"[^>]*>\s*([A-Z£€]*\s*\$?\s*[\d,.]+)/i);
+                    const standardMatch = html.match(/class="ux-textspans ux-textspans--BOLD"[^>]*>\s*([A-Z£€]*\s*\$?\s*[\d,.]+)\s*<\/span>/i);
+                    
+                    const found = mobileMatch || bidMatch || standardMatch;
+                    if (found) price = found[1].trim();
                 }
             } catch(e) {}
         }
