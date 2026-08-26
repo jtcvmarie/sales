@@ -5,11 +5,9 @@ export default function Home() {
   const [discogs, setDiscogs] = useState([]);
   const [ebayActive, setEbayActive] = useState([]);
   
-  // Independent Search Strings
   const [mainQuery, setMainQuery] = useState("");
   const [soldQuery, setSoldQuery] = useState("");
   
-  // UI States
   const [loadingMain, setLoadingMain] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [hasSearched, setHasSearched] = useState(false);
@@ -41,7 +39,6 @@ export default function Home() {
     setErrorMsg(""); 
     setHasSearched(false);
     
-    // Auto-open sections on new scan
     setIsDiscogsOpen(true);
     setIsEbayActiveOpen(true);
     setIsEbaySoldOpen(true);
@@ -100,7 +97,7 @@ export default function Home() {
   // Custom Colorizer for Media Formats
   const renderFormat = (fmtStr) => {
     if (!fmtStr || fmtStr === '--') return '--';
-    const formatKeywords = ['vinyl', 'lp', '45', '78', '33', 'shellac'];
+    const formatKeywords = ['vinyl', 'lp', '45', '78', '33', 'shellac', 'cassette'];
     const parts = fmtStr.split(', ');
     
     return parts.map((part, i) => {
@@ -114,12 +111,13 @@ export default function Home() {
     });
   };
 
+  const discogsDirectUrl = mainQuery ? `https://www.discogs.com/search?q=${encodeURIComponent(mainQuery)}&type=release` : '#';
   const ebayActiveDirectUrl = mainQuery ? `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(mainQuery)}` : '#';
   const ebaySoldDirectUrl = soldQuery ? `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(soldQuery)}&LH_Sold=1&LH_Complete=1` : '#';
 
   return (
     <main style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto', backgroundColor: '#fff', paddingBottom: '100px' }}>
-      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V42</h2>
+      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px' }}>Record Lens V43</h2>
       
       <input type="file" accept="image/*" capture="environment" onChange={handleCapture} style={{ padding: '10px', fontSize: '16px', marginBottom: '12px', width: '100%', backgroundColor: '#f9f9f9', border: '1px solid #ccc', borderRadius: '5px' }} />
       
@@ -147,12 +145,14 @@ export default function Home() {
       {/* 1. DISCOGS SECTION */}
       {hasSearched && (
         <div style={{ marginBottom: '40px' }}>
-          <div 
-            onClick={() => setIsDiscogsOpen(!isDiscogsOpen)}
-            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#222', color: 'white', padding: '10px 15px', borderRadius: '4px', margin: '0 0 15px 0', cursor: 'pointer' }}
-          >
-            <h3 style={{ margin: 0 }}>Discogs Matches ({discogs.length})</h3>
-            <span style={{ fontSize: '18px', fontWeight: 'bold' }}>{isDiscogsOpen ? '–' : '+'}</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', backgroundColor: '#222', padding: '10px 15px', borderRadius: '4px' }}>
+            <div onClick={() => setIsDiscogsOpen(!isDiscogsOpen)} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+              <h3 style={{ margin: 0, color: 'white' }}>Discogs Matches</h3>
+              <span style={{ fontSize: '18px', fontWeight: 'bold', color: 'white' }}>{isDiscogsOpen ? '–' : '+'}</span>
+            </div>
+            <a href={discogsDirectUrl} target="_blank" rel="noreferrer" style={{ fontSize: '12px', color: 'white', textDecoration: 'none', fontWeight: 'bold', border: '1px solid white', padding: '4px 8px', borderRadius: '4px' }}>
+              View All on Discogs →
+            </a>
           </div>
           
           {isDiscogsOpen && (
@@ -166,6 +166,8 @@ export default function Home() {
                 
                 return (
                   <div key={i} style={{ marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '20px' }}>
+                    
+                    {/* TOP: Image, Title, Badges */}
                     <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
                       {item.thumbnail ? (
                         <img src={item.thumbnail} alt="match" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '4px', flexShrink: 0 }} />
@@ -177,38 +179,44 @@ export default function Home() {
                           {item.title}
                         </a>
                         
-                        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                          <div style={{ backgroundColor: '#eaf4ea', border: '1px solid #c8e6c9', borderRadius: '4px', padding: '4px 10px', fontSize: '13px' }}>
-                            <span style={{ color: '#2e7d32', fontWeight: 'bold' }}>Have:</span> <strong style={{ fontSize: '14px', color: '#1b5e20' }}>{dData.have}</strong>
+                        {/* COMPACT BADGES */}
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                          <div style={{ backgroundColor: '#eaf4ea', border: '1px solid #c8e6c9', borderRadius: '4px', padding: '2px 8px', fontSize: '12px' }}>
+                            <span style={{ color: '#2e7d32', fontWeight: 'bold' }}>Have:</span> <strong style={{ fontSize: '13px', color: '#1b5e20' }}>{dData.have}</strong>
                           </div>
-                          <div style={{ backgroundColor: '#fff3e0', border: '1px solid #ffe0b2', borderRadius: '4px', padding: '4px 10px', fontSize: '13px' }}>
-                            <span style={{ color: '#e65100', fontWeight: 'bold' }}>Want:</span> <strong style={{ fontSize: '14px', color: '#b71c1c' }}>{dData.want}</strong>
+                          <div style={{ backgroundColor: '#fff3e0', border: '1px solid #ffe0b2', borderRadius: '4px', padding: '2px 8px', fontSize: '12px' }}>
+                            <span style={{ color: '#e65100', fontWeight: 'bold' }}>Want:</span> <strong style={{ fontSize: '13px', color: '#b71c1c' }}>{dData.want}</strong>
                           </div>
                           {dData.activeLow !== '--' && (
-                             <div style={{ backgroundColor: '#e3f2fd', border: '1px solid #bbdefb', borderRadius: '4px', padding: '4px 10px', fontSize: '13px' }}>
-                               <span style={{ color: '#1565c0', fontWeight: 'bold' }}>Low:</span> <strong style={{ fontSize: '14px', color: '#0d47a1' }}>{dData.activeLow}</strong>
+                             <div style={{ backgroundColor: '#e3f2fd', border: '1px solid #bbdefb', borderRadius: '4px', padding: '2px 8px', fontSize: '12px' }}>
+                               <span style={{ color: '#1565c0', fontWeight: 'bold' }}>Low:</span> <strong style={{ fontSize: '13px', color: '#0d47a1' }}>{dData.activeLow}</strong>
                              </div>
                           )}
                         </div>
-
-                        {/* DEEP METADATA SUBTEXT */}
-                        <div style={{ fontSize: '12px', color: '#444', lineHeight: '1.5' }}>
-                          {dData.label && dData.label !== '--' && (
-                            <div><span style={{ color: '#4527a0', fontWeight: 'bold' }}>Label:</span> {dData.label}</div>
-                          )}
-                          {dData.format && dData.format !== '--' && (
-                            <div><span style={{ color: '#4527a0', fontWeight: 'bold' }}>Format:</span> {renderFormat(dData.format)}</div>
-                          )}
-                          {dData.country && dData.country !== '--' && (
-                            <div><span style={{ color: '#4527a0', fontWeight: 'bold' }}>Country:</span> {dData.country}</div>
-                          )}
-                          {dData.released && dData.released !== '--' && (
-                            <div><span style={{ color: '#4527a0', fontWeight: 'bold' }}>Released:</span> {dData.released}</div>
-                          )}
-                        </div>
-                        
                       </div>
                     </div>
+
+                    {/* BOTTOM: Full Width Metadata Lines */}
+                    <div style={{ fontSize: '13px', color: '#333', lineHeight: '1.5', marginTop: '12px' }}>
+                      {dData.format && dData.format !== '--' && (
+                        <div style={{ marginBottom: '4px' }}>
+                          <span style={{ color: '#4527a0', fontWeight: 'bold' }}>Format:</span> {renderFormat(dData.format)}
+                        </div>
+                      )}
+                      
+                      <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+                        {dData.label && dData.label !== '--' && (
+                          <div><span style={{ color: '#4527a0', fontWeight: 'bold' }}>Label:</span> {dData.label}</div>
+                        )}
+                        {dData.country && dData.country !== '--' && (
+                          <div><span style={{ color: '#4527a0', fontWeight: 'bold' }}>Country:</span> {dData.country}</div>
+                        )}
+                        {dData.released && dData.released !== '--' && (
+                          <div><span style={{ color: '#4527a0', fontWeight: 'bold' }}>Released:</span> {dData.released}</div>
+                        )}
+                      </div>
+                    </div>
+
                   </div>
                 );
               })
@@ -262,10 +270,12 @@ export default function Home() {
 
       {/* 3. EBAY SOLD GATEWAY */}
       {hasSearched && (
-        <div style={{ marginBottom: '40px', borderTop: '4px solid #8b0000', paddingTop: '20px' }}>
-          <div onClick={() => setIsEbaySoldOpen(!isEbaySoldOpen)} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '15px', cursor: 'pointer' }}>
-            <h3 style={{ margin: 0, color: '#8b0000' }}>eBay Sold History</h3>
-            <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#8b0000' }}>{isEbaySoldOpen ? '–' : '+'}</span>
+        <div style={{ marginBottom: '40px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', backgroundColor: '#8b0000', padding: '10px 15px', borderRadius: '4px' }}>
+            <div onClick={() => setIsEbaySoldOpen(!isEbaySoldOpen)} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+              <h3 style={{ margin: 0, color: 'white' }}>eBay Sold History</h3>
+              <span style={{ fontSize: '18px', fontWeight: 'bold', color: 'white' }}>{isEbaySoldOpen ? '–' : '+'}</span>
+            </div>
           </div>
 
           {isEbaySoldOpen && (
