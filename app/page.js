@@ -23,7 +23,7 @@ export default function Home() {
   const [isEbayActiveOpen, setIsEbayActiveOpen] = useState(true);
   const [isEbaySoldOpen, setIsEbaySoldOpen] = useState(true);
 
-  // Inject barcode library dynamically to keep app lightweight
+  // Inject barcode library dynamically
   useEffect(() => {
     if (!document.getElementById('html5-qrcode-script')) {
       const script = document.createElement('script');
@@ -65,20 +65,13 @@ export default function Home() {
       const smallFile = await shrinkImage(file);
       let barcodeText = "";
 
-      // 1. ATTEMPT FRONTEND BARCODE SCAN (Lightning Fast)
+      // 1. ATTEMPT FRONTEND BARCODE SCAN 
       if (window.Html5Qrcode) {
         try {
           const html5QrCode = new window.Html5Qrcode("hidden-barcode-reader");
           const decodedText = await html5QrCode.scanFile(smallFile, true);
           if (decodedText) {
-             setLoadingStatus(`UPC Found: ${decodedText}. Querying database...`);
-             const upcRes = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${decodedText}`);
-             if (upcRes.ok) {
-                 const upcJson = await upcRes.json();
-                 if (upcJson.items && upcJson.items.length > 0) {
-                     barcodeText = upcJson.items[0].title;
-                 }
-             }
+             barcodeText = decodedText; // Got the raw number!
           }
         } catch (scanErr) {
           // Normal behavior for album cover photos. Proceed to Google Lens.
@@ -89,7 +82,7 @@ export default function Home() {
 
       // 2. ROUTE BASED ON BARCODE SUCCESS
       if (barcodeText) {
-         setLoadingStatus(`Found: "${barcodeText}". Loading markets...`);
+         setLoadingStatus(`Barcode ${barcodeText} found! Fetching market data...`);
          formData.append('barcodeQuery', barcodeText);
       } else {
          setLoadingStatus("Scanning album artwork via Google Lens...");
@@ -165,7 +158,7 @@ export default function Home() {
 
   return (
     <main style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto', backgroundColor: '#fff', paddingBottom: '100px' }}>
-      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '15px' }}>Record Lens V51</h2>
+      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '15px' }}>Record Lens V52</h2>
       
       {/* Required for HTML5-QRCode to process image files invisibly */}
       <div id="hidden-barcode-reader" style={{ display: 'none' }}></div>
