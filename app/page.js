@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export default function Home() {
   const [discogs, setDiscogs] = useState([]);
@@ -9,6 +9,7 @@ export default function Home() {
   const [soldQuery, setSoldQuery] = useState("");
   
   const [loadingMain, setLoadingMain] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState("Fetching market data...");
   const [errorMsg, setErrorMsg] = useState("");
   const [hasSearched, setHasSearched] = useState(false);
 
@@ -21,6 +22,17 @@ export default function Home() {
   const [isDiscogsOpen, setIsDiscogsOpen] = useState(true);
   const [isEbayActiveOpen, setIsEbayActiveOpen] = useState(true);
   const [isEbaySoldOpen, setIsEbaySoldOpen] = useState(true);
+
+  // Inject barcode library dynamically to keep app lightweight
+  useEffect(() => {
+    if (!document.getElementById('html5-qrcode-script')) {
+      const script = document.createElement('script');
+      script.id = 'html5-qrcode-script';
+      script.src = "https://unpkg.com/html5-qrcode";
+      script.async = true;
+      document.body.appendChild(script);
+    }
+  }, []);
 
   const shrinkImage = (file) => { 
     return new Promise((resolve) => {
@@ -41,6 +53,7 @@ export default function Home() {
     if (!file) return;
     
     setLoadingMain(true); 
+    setLoadingStatus("Scanning barcode...");
     setErrorMsg(""); 
     setHasSearched(false);
     
@@ -50,8 +63,38 @@ export default function Home() {
     
     try {
       const smallFile = await shrinkImage(file);
+      let barcodeText = "";
+
+      // 1. ATTEMPT FRONTEND BARCODE SCAN (Lightning Fast)
+      if (window.Html5Qrcode) {
+        try {
+          const html5QrCode = new window.Html5Qrcode("hidden-barcode-reader");
+          const decodedText = await html5QrCode.scanFile(smallFile, true);
+          if (decodedText) {
+             setLoadingStatus(`UPC Found: ${decodedText}. Querying database...`);
+             const upcRes = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${decodedText}`);
+             if (upcRes.ok) {
+                 const upcJson = await upcRes.json();
+                 if (upcJson.items && upcJson.items.length > 0) {
+                     barcodeText = upcJson.items[0].title;
+                 }
+             }
+          }
+        } catch (scanErr) {
+          // Normal behavior for album cover photos. Proceed to Google Lens.
+        }
+      }
+
       const formData = new FormData(); 
-      formData.append('image', smallFile);
+
+      // 2. ROUTE BASED ON BARCODE SUCCESS
+      if (barcodeText) {
+         setLoadingStatus(`Found: "${barcodeText}". Loading markets...`);
+         formData.append('barcodeQuery', barcodeText);
+      } else {
+         setLoadingStatus("Scanning album artwork via Google Lens...");
+         formData.append('image', smallFile);
+      }
       
       const res = await fetch('/api/search', { method: 'POST', body: formData });
       if (!res.ok) throw new Error(`Server returned status ${res.status}`);
@@ -62,8 +105,8 @@ export default function Home() {
       setDiscogs(data.discogsMatches || []);
       setEbayActive(data.ebayActiveMatches || []);
       
-      setMainQuery(data.textQuery || "");
-      setSoldQuery(data.textQuery || "");
+      setMainQuery(data.textQuery || barcodeText || "");
+      setSoldQuery(data.textQuery || barcodeText || "");
       setHasSearched(true);
     } catch (error) { 
       setErrorMsg("Error: " + error.message); 
@@ -75,6 +118,7 @@ export default function Home() {
   const handleMainSearch = async () => {
     if (!mainQuery.trim()) return;
     setLoadingMain(true);
+    setLoadingStatus("Fetching market data...");
     setErrorMsg("");
     setHasSearched(false);
 
@@ -101,7 +145,7 @@ export default function Home() {
 
   const renderFormat = (fmtStr) => {
     if (!fmtStr || typeof fmtStr !== 'string' || fmtStr === '--') return '--';
-    const formatKeywords = ['vinyl', 'lp', '45', '78', '16"', '33', 'shellac', 'cassette', '7"', '10"', '12"', 'cd'];
+    const formatKeywords = ['vinyl', 'lp', '45', '78', '33', 'shellac', 'cassette', '7"', '10"', '12"', 'cd'];
     const parts = fmtStr.split(', ');
     
     return parts.map((part, i) => {
@@ -121,8 +165,11 @@ export default function Home() {
 
   return (
     <main style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto', backgroundColor: '#fff', paddingBottom: '100px' }}>
-      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '15px' }}>Record Lens V49</h2>
+      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '15px' }}>Record Lens V51</h2>
       
+      {/* Required for HTML5-QRCode to process image files invisibly */}
+      <div id="hidden-barcode-reader" style={{ display: 'none' }}></div>
+
       <input type="file" accept="image/*" capture="environment" onChange={handleCapture} style={{ padding: '10px', fontSize: '16px', marginBottom: '15px', width: '100%', backgroundColor: '#f9f9f9', border: '1px solid #ccc', borderRadius: '5px' }} />
       
       {/* GLOBAL SEARCH BAR */}
@@ -156,7 +203,7 @@ export default function Home() {
         </label>
       </div>
 
-      {loadingMain && <p style={{ fontWeight: 'bold', color: '#0070f3', marginBottom: '20px' }}>Fetching market data...</p>}
+      {loadingMain && <p style={{ fontWeight: 'bold', color: '#0070f3', marginBottom: '20px' }}>{loadingStatus}</p>}
       {errorMsg && <p style={{ color: 'red', fontWeight: 'bold', backgroundColor: '#fee', padding: '10px', borderRadius: '4px', marginBottom: '20px' }}>{errorMsg}</p>}
       
       {/* 1. DISCOGS SECTION */}
@@ -196,13 +243,8 @@ export default function Home() {
                           {String(item.title || "")}
                         </a>
                         
-                        {/* THE SINGLE LINE LAYOUT: Center locked, Price floated right */}
                         <div style={{ marginTop: 'auto', display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', marginBottom: '4px', gap: '4px', width: '100%' }}>
-                          
-                          {/* Column 1: Empty spacer to perfectly offset Column 3 */}
                           <div /> 
-                          
-                          {/* Column 2: Dead-Center Badges */}
                           <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'nowrap' }}>
                             <div style={{ backgroundColor: '#eaf4ea', border: '1px solid #c8e6c9', borderRadius: '4px', padding: '4px 10px', fontSize: '13px', whiteSpace: 'nowrap' }}>
                               <span style={{ color: '#2e7d32', fontWeight: 'bold' }}>Have:</span> <strong style={{ fontSize: '14px', color: '#1b5e20' }}>{dData.have}</strong>
@@ -212,7 +254,6 @@ export default function Home() {
                             </div>
                           </div>
 
-                          {/* Column 3: Right-Aligned Price Badge */}
                           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                             {showMarketLow && dData.activeLow !== '--' && (
                                <div style={{ backgroundColor: '#e3f2fd', border: '1px solid #bbdefb', borderRadius: '4px', padding: '1px 6px', whiteSpace: 'nowrap' }}>
@@ -220,7 +261,6 @@ export default function Home() {
                                </div>
                             )}
                           </div>
-
                         </div>
                       </div>
                     </div>
