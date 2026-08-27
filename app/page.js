@@ -158,13 +158,12 @@ export default function Home() {
 
   return (
     <main style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto', backgroundColor: '#fff', paddingBottom: '100px' }}>
-      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '15px' }}>Record Lens V54</h2>
+      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '15px' }}>Record Lens V55</h2>
       
       <div id="hidden-barcode-reader" style={{ display: 'none' }}></div>
 
       <input type="file" accept="image/*" capture="environment" onChange={handleCapture} style={{ padding: '10px', fontSize: '16px', marginBottom: '15px', width: '100%', backgroundColor: '#f9f9f9', border: '1px solid #ccc', borderRadius: '5px' }} />
       
-      {/* GLOBAL SEARCH BAR */}
       <div style={{ marginBottom: '15px', display: 'flex', gap: '8px' }}>
         <input 
           type="text" 
@@ -318,7 +317,8 @@ export default function Home() {
                         </div>
                       )}
                       
-                      <div style={{ display: 'flex', gap: '15px', flexWrap: 'nowrap', overflow: 'hidden', whiteSpace: 'nowrap', textAlign: 'left' }}>
+                      {/* V55 UPDATE: overflowX: 'auto' so the metadata line is swipable if it overflows! */}
+                      <div style={{ display: 'flex', gap: '15px', flexWrap: 'nowrap', overflowX: 'auto', whiteSpace: 'nowrap', textAlign: 'left', paddingBottom: '6px', WebkitOverflowScrolling: 'touch' }}>
                         {dData.label && dData.label !== '--' && (
                           <div><span style={{ color: '#4527a0', fontWeight: 'bold' }}>Label:</span> {String(dData.label)}</div>
                         )}
