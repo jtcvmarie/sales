@@ -136,16 +136,42 @@ export default function Home() {
     }
   };
 
+  // ADVANCED FORMAT COLORIZER 
   const renderFormat = (fmtStr) => {
     if (!fmtStr || typeof fmtStr !== 'string' || fmtStr === '--') return '--';
-    const formatKeywords = ['vinyl', 'lp', '45', '78', '33', 'shellac', 'cassette', '7"', '10"', '12"', 'cd'];
+    
+    // Core Media formats (Gets Burnt Orange)
+    const mediaKeywords = ['vinyl', 'lp', '45', '78', '33', 'shellac', 'cassette', '7"', '10"', '12"', 'cd'];
+    
+    // Exhaustive Color & Effect formats (Gets Blurple)
+    const colorKeywords = [
+        'red', 'yellow', 'orange', 'green', 'blue', 'purple', 'black', 'indigo', 'silver', 'gray', 'grey', 'white', 
+        'marble', 'translucent', 'opal', 'pink', 'teal', 'forest', 'jade', 'amber', 'clear', 'magenta', 'cream', 
+        'gold', 'lemon', 'apricot', 'curacao', 'turquoise', 'petrol', 'olive', 'brick', 'brown', 'oxblood', 'sparkle', 
+        'pearl', 'lagoon', 'waterfall', 'horizon', 'dawn', 'glow', 'corona', 'ink', 'splatter', 'split', 'twister', 
+        'propeller', 'yolk', 'swirl', 'opaque', 'neon', 'pastel', 'metallic', 'eco', 'ice', 'glass', 'haze', 'quartz', 
+        'blend', 'swamp', 'candy', 'lavender', 'chocolate'
+    ];
+
     const parts = fmtStr.split(', ');
     
     return parts.map((part, i) => {
-      const isMedia = formatKeywords.some(k => part.toLowerCase().includes(k));
+      const lowerPart = part.toLowerCase();
+      // If it contains a media keyword, it's Media
+      const isMedia = mediaKeywords.some(k => lowerPart.includes(k));
+      // If it's not media but contains ANY color keyword anywhere in the chunk, color the WHOLE chunk Blurple
+      const isColor = !isMedia && colorKeywords.some(k => lowerPart.includes(k));
+      
+      let styleObj = {};
+      if (isMedia) {
+          styleObj = { color: '#d84315', fontWeight: 'bold' }; // Burnt Orange
+      } else if (isColor) {
+          styleObj = { color: '#651fff', fontWeight: 'bold' }; // Blurple!
+      }
+
       return (
         <span key={i}>
-          {isMedia ? <span style={{ color: '#d84315', fontWeight: 'bold' }}>{part}</span> : part}
+          {isMedia || isColor ? <span style={styleObj}>{part}</span> : part}
           {i < parts.length - 1 ? ', ' : ''}
         </span>
       );
@@ -158,7 +184,19 @@ export default function Home() {
 
   return (
     <main style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto', backgroundColor: '#fff', paddingBottom: '100px' }}>
-      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '15px' }}>Record Lens V55</h2>
+      
+      {/* CSS Block to kill the ugly scrollbars while keeping swipability active */}
+      <style>{`
+        .hide-scroll::-webkit-scrollbar {
+          display: none;
+        }
+        .hide-scroll {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
+
+      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '15px' }}>Record Lens V56</h2>
       
       <div id="hidden-barcode-reader" style={{ display: 'none' }}></div>
 
@@ -222,7 +260,7 @@ export default function Home() {
               {upcData.offers.length === 0 ? (
                  <div style={{ padding: '15px' }}><p style={{ margin: 0, fontSize: '14px', color: '#555' }}>No direct store offers found for this exact barcode.</p></div>
               ) : (
-                 <div style={{ overflowX: 'auto' }}>
+                 <div className="hide-scroll" style={{ overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left', minWidth: '500px' }}>
                       <thead>
                           <tr style={{ backgroundColor: '#e0f2f1', borderBottom: '2px solid #b2dfdb' }}>
@@ -317,8 +355,8 @@ export default function Home() {
                         </div>
                       )}
                       
-                      {/* V55 UPDATE: overflowX: 'auto' so the metadata line is swipable if it overflows! */}
-                      <div style={{ display: 'flex', gap: '15px', flexWrap: 'nowrap', overflowX: 'auto', whiteSpace: 'nowrap', textAlign: 'left', paddingBottom: '6px', WebkitOverflowScrolling: 'touch' }}>
+                      {/* V56 UPDATE: className="hide-scroll" applied to kill the scrollbar but keep swipe! */}
+                      <div className="hide-scroll" style={{ display: 'flex', gap: '15px', flexWrap: 'nowrap', overflowX: 'auto', whiteSpace: 'nowrap', textAlign: 'left', paddingBottom: '6px', WebkitOverflowScrolling: 'touch' }}>
                         {dData.label && dData.label !== '--' && (
                           <div><span style={{ color: '#4527a0', fontWeight: 'bold' }}>Label:</span> {String(dData.label)}</div>
                         )}
@@ -392,7 +430,7 @@ export default function Home() {
 
       {/* 3. EBAY SOLD GATEWAY */}
       {hasSearched && showEbay && (
-        <div style={{ marginBottom: '40px' }}>
+        <div style={{ marginBottom: '40px', borderTop: '4px solid #8b0000', paddingTop: '20px' }}>
           <div onClick={() => setIsEbaySoldOpen(!isEbaySoldOpen)} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '15px', backgroundColor: '#8b0000', padding: '10px 15px', borderRadius: '4px', cursor: 'pointer' }}>
             <h3 style={{ margin: 0, color: 'white' }}>eBay Sold History</h3>
             <span style={{ fontSize: '18px', fontWeight: 'bold', color: 'white' }}>{isEbaySoldOpen ? '–' : '+'}</span>
