@@ -19,6 +19,11 @@ export default function Home() {
   const [showDiscogs, setShowDiscogs] = useState(true);
   const [showEbay, setShowEbay] = useState(true);
 
+  // Discogs Instant Filters
+  const [filter33, setFilter33] = useState(false);
+  const [filter45, setFilter45] = useState(false);
+  const [filter78, setFilter78] = useState(false);
+
   // Collapsible Section States
   const [isUpcOpen, setIsUpcOpen] = useState(true);
   const [isDiscogsOpen, setIsDiscogsOpen] = useState(true);
@@ -136,14 +141,12 @@ export default function Home() {
     }
   };
 
-  // ADVANCED FORMAT COLORIZER 
+  // ADVANCED FORMAT COLORIZER (Strict word-boundary \b Regex to fix the Blurple stickered bug)
   const renderFormat = (fmtStr) => {
     if (!fmtStr || typeof fmtStr !== 'string' || fmtStr === '--') return '--';
     
-    // Core Media formats (Gets Burnt Orange)
     const mediaKeywords = ['vinyl', 'lp', '45', '78', '33', 'shellac', 'cassette', '7"', '10"', '12"', 'cd'];
     
-    // Exhaustive Color & Effect formats (Gets Blurple)
     const colorKeywords = [
         'red', 'yellow', 'orange', 'green', 'blue', 'purple', 'black', 'indigo', 'silver', 'gray', 'grey', 'white', 
         'marble', 'translucent', 'opal', 'pink', 'teal', 'forest', 'jade', 'amber', 'clear', 'magenta', 'cream', 
@@ -152,21 +155,21 @@ export default function Home() {
         'propeller', 'yolk', 'swirl', 'opaque', 'neon', 'pastel', 'metallic', 'eco', 'ice', 'glass', 'haze', 'quartz', 
         'blend', 'swamp', 'candy', 'lavender', 'chocolate'
     ];
+    
+    // The \b ensures 'red' only matches if it stands alone, skipping words like 'stickered'
+    const colorRegex = new RegExp('\\b(' + colorKeywords.join('|') + ')\\b', 'i');
 
     const parts = fmtStr.split(', ');
-    
     return parts.map((part, i) => {
       const lowerPart = part.toLowerCase();
-      // If it contains a media keyword, it's Media
       const isMedia = mediaKeywords.some(k => lowerPart.includes(k));
-      // If it's not media but contains ANY color keyword anywhere in the chunk, color the WHOLE chunk Blurple
-      const isColor = !isMedia && colorKeywords.some(k => lowerPart.includes(k));
+      const isColor = !isMedia && colorRegex.test(part); // V57 Regex Fix
       
       let styleObj = {};
       if (isMedia) {
-          styleObj = { color: '#d84315', fontWeight: 'bold' }; // Burnt Orange
+          styleObj = { color: '#d84315', fontWeight: 'bold' }; 
       } else if (isColor) {
-          styleObj = { color: '#651fff', fontWeight: 'bold' }; // Blurple!
+          styleObj = { color: '#651fff', fontWeight: 'bold' }; 
       }
 
       return (
@@ -178,6 +181,16 @@ export default function Home() {
     });
   };
 
+  // INSTANT FORMAT FILTER LOGIC (Runs right before rendering)
+  const filteredDiscogs = discogs.filter(item => {
+     if (!filter33 && !filter45 && !filter78) return true; // Show all if none checked
+     const fmt = (item.discogsData?.format || "").toLowerCase();
+     if (filter33 && (fmt.includes('33') || fmt.includes('lp'))) return true;
+     if (filter45 && fmt.includes('45')) return true;
+     if (filter78 && fmt.includes('78')) return true;
+     return false;
+  });
+
   const discogsDirectUrl = mainQuery ? `https://www.discogs.com/search?q=${encodeURIComponent(mainQuery)}&type=release` : '#';
   const ebayActiveDirectUrl = mainQuery ? `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(mainQuery)}` : '#';
   const ebaySoldDirectUrl = soldQuery ? `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(soldQuery)}&LH_Sold=1&LH_Complete=1` : '#';
@@ -185,7 +198,7 @@ export default function Home() {
   return (
     <main style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto', backgroundColor: '#fff', paddingBottom: '100px' }}>
       
-      {/* CSS Block to kill the ugly scrollbars while keeping swipability active */}
+      {/* CSS Block to kill scrollbars globally but preserve smooth touch/swipe */}
       <style>{`
         .hide-scroll::-webkit-scrollbar {
           display: none;
@@ -196,12 +209,13 @@ export default function Home() {
         }
       `}</style>
 
-      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '15px' }}>Record Lens V56</h2>
+      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '15px' }}>Record Lens V57</h2>
       
       <div id="hidden-barcode-reader" style={{ display: 'none' }}></div>
 
       <input type="file" accept="image/*" capture="environment" onChange={handleCapture} style={{ padding: '10px', fontSize: '16px', marginBottom: '15px', width: '100%', backgroundColor: '#f9f9f9', border: '1px solid #ccc', borderRadius: '5px' }} />
       
+      {/* GLOBAL SEARCH BAR */}
       <div style={{ marginBottom: '15px', display: 'flex', gap: '8px' }}>
         <input 
           type="text" 
@@ -219,7 +233,8 @@ export default function Home() {
         </button>
       </div>
 
-      <div style={{ display: 'flex', gap: '15px', marginBottom: '25px', fontSize: '14px', fontWeight: 'bold', color: '#444', backgroundColor: '#f5f5f5', padding: '10px 15px', borderRadius: '6px', border: '1px solid #ddd', flexWrap: 'wrap' }}>
+      {/* GLOBAL VIEW TOGGLES */}
+      <div style={{ display: 'flex', gap: '15px', marginBottom: '15px', fontSize: '14px', fontWeight: 'bold', color: '#444', backgroundColor: '#f5f5f5', padding: '10px 15px', borderRadius: '6px', border: '1px solid #ddd', flexWrap: 'wrap' }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
           <input type="checkbox" checked={showMarketLow} onChange={(e) => setShowMarketLow(e.target.checked)} style={{ width: '16px', height: '16px' }} /> Market Low
         </label>
@@ -228,6 +243,20 @@ export default function Home() {
         </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
           <input type="checkbox" checked={showEbay} onChange={(e) => setShowEbay(e.target.checked)} style={{ width: '16px', height: '16px' }} /> eBay
+        </label>
+      </div>
+
+      {/* DISCOGS FORMAT FILTERS (Instant UI Update) */}
+      <div style={{ display: 'flex', gap: '15px', marginBottom: '25px', fontSize: '14px', fontWeight: 'bold', color: '#651fff', backgroundColor: '#f3e5f5', padding: '10px 15px', borderRadius: '6px', border: '1px solid #e1bee7', flexWrap: 'wrap' }}>
+        <span style={{ marginRight: '5px' }}>Filter Formats:</span>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+          <input type="checkbox" checked={filter33} onChange={(e) => setFilter33(e.target.checked)} style={{ width: '16px', height: '16px' }} /> 33
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+          <input type="checkbox" checked={filter45} onChange={(e) => setFilter45(e.target.checked)} style={{ width: '16px', height: '16px' }} /> 45
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+          <input type="checkbox" checked={filter78} onChange={(e) => setFilter78(e.target.checked)} style={{ width: '16px', height: '16px' }} /> 78
         </label>
       </div>
 
@@ -260,7 +289,7 @@ export default function Home() {
               {upcData.offers.length === 0 ? (
                  <div style={{ padding: '15px' }}><p style={{ margin: 0, fontSize: '14px', color: '#555' }}>No direct store offers found for this exact barcode.</p></div>
               ) : (
-                 <div className="hide-scroll" style={{ overflowX: 'auto' }}>
+                 <div className="hide-scroll" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left', minWidth: '500px' }}>
                       <thead>
                           <tr style={{ backgroundColor: '#e0f2f1', borderBottom: '2px solid #b2dfdb' }}>
@@ -290,7 +319,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 1. DISCOGS SECTION */}
+      {/* 1. DISCOGS SECTION (V57 Table-Wrapped scrolling update) */}
       {hasSearched && showDiscogs && (
         <div style={{ marginBottom: '40px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', backgroundColor: '#222', padding: '10px 15px', borderRadius: '4px' }}>
@@ -304,73 +333,80 @@ export default function Home() {
           </div>
           
           {isDiscogsOpen && (
-            discogs.length === 0 ? (
+            filteredDiscogs.length === 0 ? (
               <div style={{ padding: '15px', backgroundColor: '#fafafa', border: '1px solid #ddd', borderRadius: '6px' }}>
-                <p style={{ margin: 0, fontSize: '14px', color: '#555' }}>0 Discogs matches found.</p>
+                <p style={{ margin: 0, fontSize: '14px', color: '#555' }}>0 Discogs matches found for selected format.</p>
               </div>
             ) : (
-              discogs.map((item, i) => {
-                const dData = item.discogsData || { have: '--', want: '--', activeLow: '--', label: '--', format: '--', country: '--', released: '--' };
-                
-                return (
-                  <div key={i} style={{ marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '15px' }}>
-                    <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
-                      {item.thumbnail ? (
-                        <img src={item.thumbnail} alt="match" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '4px', flexShrink: 0 }} />
-                      ) : (
-                        <div style={{ width: '80px', height: '80px', backgroundColor: '#eee', borderRadius: '4px', flexShrink: 0 }} />
-                      )}
-                      
-                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                        <a href={item.link} target="_blank" rel="noreferrer" style={{ display: 'block', textAlign: 'left', fontWeight: 'bold', fontSize: '14px', marginBottom: '8px', color: '#0056b3', textDecoration: 'none', whiteSpace: 'normal', wordBreak: 'break-word' }}>
-                          {String(item.title || "")}
-                        </a>
+              // The entire list is now wrapped in one horizontally scrollable container!
+              <div className="hide-scroll" style={{ overflowX: 'auto', backgroundColor: '#fff', border: '1px solid #ddd', borderRadius: '6px', WebkitOverflowScrolling: 'touch' }}>
+                <div style={{ minWidth: '100%', width: 'max-content', display: 'flex', flexDirection: 'column' }}>
+                  {filteredDiscogs.map((item, i) => {
+                    const dData = item.discogsData || { have: '--', want: '--', activeLow: '--', label: '--', format: '--', country: '--', released: '--' };
+                    
+                    return (
+                      <div key={i} style={{ padding: '15px', borderBottom: i === filteredDiscogs.length - 1 ? 'none' : '1px solid #eee' }}>
                         
-                        <div style={{ marginTop: 'auto', display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', marginBottom: '4px', gap: '4px', width: '100%' }}>
-                          <div /> 
-                          <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'nowrap' }}>
-                            <div style={{ backgroundColor: '#eaf4ea', border: '1px solid #c8e6c9', borderRadius: '4px', padding: '4px 10px', fontSize: '13px', whiteSpace: 'nowrap' }}>
-                              <span style={{ color: '#2e7d32', fontWeight: 'bold' }}>Have:</span> <strong style={{ fontSize: '14px', color: '#1b5e20' }}>{dData.have}</strong>
-                            </div>
-                            <div style={{ backgroundColor: '#fff3e0', border: '1px solid #ffe0b2', borderRadius: '4px', padding: '4px 10px', fontSize: '13px', whiteSpace: 'nowrap' }}>
-                              <span style={{ color: '#e65100', fontWeight: 'bold' }}>Want:</span> <strong style={{ fontSize: '14px', color: '#b71c1c' }}>{dData.want}</strong>
+                        {/* TOP HALF: Title securely wrapped to max 540px to prevent endless stretching */}
+                        <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start', maxWidth: 'min(calc(100vw - 60px), 540px)', whiteSpace: 'normal' }}>
+                          {item.thumbnail ? (
+                            <img src={item.thumbnail} alt="match" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '4px', flexShrink: 0 }} />
+                          ) : (
+                            <div style={{ width: '80px', height: '80px', backgroundColor: '#eee', borderRadius: '4px', flexShrink: 0 }} />
+                          )}
+                          
+                          <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                            <a href={item.link} target="_blank" rel="noreferrer" style={{ display: 'block', textAlign: 'left', fontWeight: 'bold', fontSize: '14px', marginBottom: '8px', color: '#0056b3', textDecoration: 'none', whiteSpace: 'normal', wordBreak: 'break-word' }}>
+                              {String(item.title || "")}
+                            </a>
+                            
+                            <div style={{ marginTop: 'auto', display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', marginBottom: '4px', gap: '4px', width: '100%' }}>
+                              <div /> 
+                              <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'nowrap' }}>
+                                <div style={{ backgroundColor: '#eaf4ea', border: '1px solid #c8e6c9', borderRadius: '4px', padding: '4px 10px', fontSize: '13px', whiteSpace: 'nowrap' }}>
+                                  <span style={{ color: '#2e7d32', fontWeight: 'bold' }}>Have:</span> <strong style={{ fontSize: '14px', color: '#1b5e20' }}>{dData.have}</strong>
+                                </div>
+                                <div style={{ backgroundColor: '#fff3e0', border: '1px solid #ffe0b2', borderRadius: '4px', padding: '4px 10px', fontSize: '13px', whiteSpace: 'nowrap' }}>
+                                  <span style={{ color: '#e65100', fontWeight: 'bold' }}>Want:</span> <strong style={{ fontSize: '14px', color: '#b71c1c' }}>{dData.want}</strong>
+                                </div>
+                              </div>
+
+                              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                {showMarketLow && dData.activeLow !== '--' && (
+                                   <div style={{ backgroundColor: '#e3f2fd', border: '1px solid #bbdefb', borderRadius: '4px', padding: '1px 6px', whiteSpace: 'nowrap' }}>
+                                     <strong style={{ fontSize: '11px', color: '#0d47a1' }}>{dData.activeLow}</strong>
+                                   </div>
+                                )}
+                              </div>
                             </div>
                           </div>
+                        </div>
 
-                          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                            {showMarketLow && dData.activeLow !== '--' && (
-                               <div style={{ backgroundColor: '#e3f2fd', border: '1px solid #bbdefb', borderRadius: '4px', padding: '1px 6px', whiteSpace: 'nowrap' }}>
-                                 <strong style={{ fontSize: '11px', color: '#0d47a1' }}>{dData.activeLow}</strong>
-                               </div>
+                        {/* BOTTOM HALF: The Metadata that acts like a table */}
+                        <div style={{ fontSize: '12px', color: '#333', marginTop: '10px' }}>
+                          <div style={{ marginBottom: '4px', textAlign: 'left', maxWidth: 'min(calc(100vw - 60px), 540px)', whiteSpace: 'normal' }}>
+                            <span style={{ color: '#4527a0', fontWeight: 'bold' }}>Format:</span> {renderFormat(dData.format)}
+                          </div>
+                          
+                          {/* Label, Country, Released naturally push the whole container wide! */}
+                          <div style={{ display: 'flex', gap: '15px', whiteSpace: 'nowrap', textAlign: 'left' }}>
+                            {dData.label && dData.label !== '--' && (
+                              <div><span style={{ color: '#4527a0', fontWeight: 'bold' }}>Label:</span> {String(dData.label)}</div>
+                            )}
+                            {dData.country && dData.country !== '--' && (
+                              <div><span style={{ color: '#4527a0', fontWeight: 'bold' }}>Country:</span> {String(dData.country)}</div>
+                            )}
+                            {dData.released && dData.released !== '--' && (
+                              <div><span style={{ color: '#4527a0', fontWeight: 'bold' }}>Released:</span> {String(dData.released)}</div>
                             )}
                           </div>
                         </div>
-                      </div>
-                    </div>
 
-                    <div style={{ fontSize: '12px', color: '#333', marginTop: '10px' }}>
-                      {dData.format && dData.format !== '--' && (
-                        <div style={{ marginBottom: '2px', textAlign: 'left' }}>
-                          <span style={{ color: '#4527a0', fontWeight: 'bold' }}>Format:</span> {renderFormat(dData.format)}
-                        </div>
-                      )}
-                      
-                      {/* V56 UPDATE: className="hide-scroll" applied to kill the scrollbar but keep swipe! */}
-                      <div className="hide-scroll" style={{ display: 'flex', gap: '15px', flexWrap: 'nowrap', overflowX: 'auto', whiteSpace: 'nowrap', textAlign: 'left', paddingBottom: '6px', WebkitOverflowScrolling: 'touch' }}>
-                        {dData.label && dData.label !== '--' && (
-                          <div><span style={{ color: '#4527a0', fontWeight: 'bold' }}>Label:</span> {String(dData.label)}</div>
-                        )}
-                        {dData.country && dData.country !== '--' && (
-                          <div><span style={{ color: '#4527a0', fontWeight: 'bold' }}>Country:</span> {String(dData.country)}</div>
-                        )}
-                        {dData.released && dData.released !== '--' && (
-                          <div><span style={{ color: '#4527a0', fontWeight: 'bold' }}>Released:</span> {String(dData.released)}</div>
-                        )}
                       </div>
-                    </div>
-                  </div>
-                );
-              })
+                    );
+                  })}
+                </div>
+              </div>
             )
           )}
         </div>
@@ -430,7 +466,7 @@ export default function Home() {
 
       {/* 3. EBAY SOLD GATEWAY */}
       {hasSearched && showEbay && (
-        <div style={{ marginBottom: '40px', borderTop: '4px solid #8b0000', paddingTop: '20px' }}>
+        <div style={{ marginBottom: '40px' }}>
           <div onClick={() => setIsEbaySoldOpen(!isEbaySoldOpen)} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '15px', backgroundColor: '#8b0000', padding: '10px 15px', borderRadius: '4px', cursor: 'pointer' }}>
             <h3 style={{ margin: 0, color: 'white' }}>eBay Sold History</h3>
             <span style={{ fontSize: '18px', fontWeight: 'bold', color: 'white' }}>{isEbaySoldOpen ? '–' : '+'}</span>
