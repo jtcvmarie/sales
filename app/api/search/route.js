@@ -19,7 +19,7 @@ export async function POST(request) {
     let textQuery = "Vinyl Record";
     let discogsLinks = [];
     let ebayLinks = [];
-    let upcMatch = null; // New Object to hold the store table data
+    let upcMatch = null; 
 
     const fetchWithTimeout = async (url, options, timeoutMs) => {
         const controller = new AbortController();
@@ -48,7 +48,6 @@ export async function POST(request) {
                   const item = upcJson.items[0];
                   resolvedQuery = item.title || barcodeQuery; 
                   
-                  // Extract the deep table data for the frontend
                   upcMatch = {
                       upc: item.upc || barcodeQuery,
                       title: item.title || "Unknown Title",
@@ -80,7 +79,7 @@ export async function POST(request) {
       textQuery = resolvedQuery;
       
       const dPromise = discogsToken ? fetchWithTimeout(`https://api.discogs.com/database/search?q=${encodeURIComponent(textQuery)}&type=release&per_page=15`, {
-        headers: { 'User-Agent': 'RecordLens/26.0', 'Authorization': `Discogs token=${discogsToken}` }
+        headers: { 'User-Agent': 'RecordLens/27.0', 'Authorization': `Discogs token=${discogsToken}` }
       }, 3000).then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null);
       
       const ePromise = fetchWithTimeout(`https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(textQuery)}&api_key=${serpapiKey}`, {}, 3000)
@@ -126,7 +125,7 @@ export async function POST(request) {
       textQuery = manualQuery;
       
       const dPromise = discogsToken ? fetchWithTimeout(`https://api.discogs.com/database/search?q=${encodeURIComponent(textQuery)}&type=release&per_page=15`, {
-        headers: { 'User-Agent': 'RecordLens/26.0', 'Authorization': `Discogs token=${discogsToken}` }
+        headers: { 'User-Agent': 'RecordLens/27.0', 'Authorization': `Discogs token=${discogsToken}` }
       }, 3000).then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null);
       
       const ePromise = fetchWithTimeout(`https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(textQuery)}&api_key=${serpapiKey}`, {}, 3000)
@@ -147,7 +146,7 @@ export async function POST(request) {
     }
 
     // ==========================================
-    // SIMULTANEOUS DATA PROCESSING (With strict timeouts)
+    // SIMULTANEOUS DATA PROCESSING 
     // ==========================================
 
     const discogsTask = Promise.all(discogsLinks.map(async (match) => {
@@ -156,7 +155,7 @@ export async function POST(request) {
         const idMatch = match.link.match(/\/(?:release|master|sell\/(?:release|item|history))\/(\d+)/i);
         if (idMatch) {
           let id = idMatch[1];
-          const headers = { 'User-Agent': 'RecordLens/26.0', 'Authorization': `Discogs token=${discogsToken}` };
+          const headers = { 'User-Agent': 'RecordLens/27.0', 'Authorization': `Discogs token=${discogsToken}` };
           try {
             if (match.link.includes('/master/')) {
               const mRes = await fetchWithTimeout(`https://api.discogs.com/masters/${id}`, { headers }, 1200);
@@ -240,7 +239,6 @@ export async function POST(request) {
 
     const [discogsMatches, ebayActiveMatches] = await Promise.all([ discogsTask, ebayActiveTask ]);
 
-    // Return the new upcMatch object directly to the frontend
     return NextResponse.json({ upcMatch, discogsMatches, ebayActiveMatches, textQuery });
     
   } catch (error) {
