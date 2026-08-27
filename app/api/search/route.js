@@ -5,7 +5,7 @@ export async function POST(request) {
     const formData = await request.formData();
     const file = formData.get('image'); 
     const manualQuery = formData.get('query'); 
-    const barcodeQuery = formData.get('barcodeQuery'); // Direct Barcode Bypass
+    const barcodeQuery = formData.get('barcodeQuery'); 
 
     const serpapiKey = process.env.SERPAPI_KEY;
     const discogsToken = process.env.DISCOGS_TOKEN;
@@ -20,7 +20,6 @@ export async function POST(request) {
     let discogsLinks = [];
     let ebayLinks = [];
 
-    // HELPER: Strict Timeout Fetcher (Forces the app to be fast)
     const fetchWithTimeout = async (url, options, timeoutMs) => {
         const controller = new AbortController();
         const id = setTimeout(() => controller.abort(), timeoutMs);
@@ -38,10 +37,25 @@ export async function POST(request) {
     // ROUTE 1: BARCODE BYPASS (Ultra Fast)
     // ==========================================
     if (barcodeQuery) {
-      textQuery = barcodeQuery;
+      let resolvedQuery = barcodeQuery; // Default to raw barcode number
+      
+      // Fetch UPCitemdb on the Backend to bypass Browser CORS blocks
+      try {
+          const upcRes = await fetchWithTimeout(`https://api.upcitemdb.com/prod/trial/lookup?upc=${barcodeQuery}`, {}, 1200);
+          if (upcRes.ok) {
+              const upcJson = await upcRes.json();
+              if (upcJson.items && upcJson.items.length > 0) {
+                  resolvedQuery = upcJson.items[0].title; // Convert barcode to Title if found!
+              }
+          }
+      } catch (e) {
+          // If UPC database times out or hits rate limits, safely ignore.
+      }
+
+      textQuery = resolvedQuery;
       
       const dPromise = discogsToken ? fetchWithTimeout(`https://api.discogs.com/database/search?q=${encodeURIComponent(textQuery)}&type=release&per_page=15`, {
-        headers: { 'User-Agent': 'RecordLens/24.0', 'Authorization': `Discogs token=${discogsToken}` }
+        headers: { 'User-Agent': 'RecordLens/25.0', 'Authorization': `Discogs token=${discogsToken}` }
       }, 3000).then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null);
       
       const ePromise = fetchWithTimeout(`https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(textQuery)}&api_key=${serpapiKey}`, {}, 3000)
@@ -87,7 +101,7 @@ export async function POST(request) {
       textQuery = manualQuery;
       
       const dPromise = discogsToken ? fetchWithTimeout(`https://api.discogs.com/database/search?q=${encodeURIComponent(textQuery)}&type=release&per_page=15`, {
-        headers: { 'User-Agent': 'RecordLens/24.0', 'Authorization': `Discogs token=${discogsToken}` }
+        headers: { 'User-Agent': 'RecordLens/25.0', 'Authorization': `Discogs token=${discogsToken}` }
       }, 3000).then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null);
       
       const ePromise = fetchWithTimeout(`https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(textQuery)}&api_key=${serpapiKey}`, {}, 3000)
@@ -117,7 +131,7 @@ export async function POST(request) {
         const idMatch = match.link.match(/\/(?:release|master|sell\/(?:release|item|history))\/(\d+)/i);
         if (idMatch) {
           let id = idMatch[1];
-          const headers = { 'User-Agent': 'RecordLens/24.0', 'Authorization': `Discogs token=${discogsToken}` };
+          const headers = { 'User-Agent': 'RecordLens/25.0', 'Authorization': `Discogs token=${discogsToken}` };
           try {
             if (match.link.includes('/master/')) {
               const mRes = await fetchWithTimeout(`https://api.discogs.com/masters/${id}`, { headers }, 1200);
@@ -171,7 +185,6 @@ export async function POST(request) {
       
       if (!price || !shipping || (m.link && m.link.includes('ebay.io'))) {
         try {
-          // Extremely aggressive 800ms timeout for background HTML scraping
           const res = await fetchWithTimeout(m.link, { headers: botHeaders }, 800);
           const html = await res.text();
           
