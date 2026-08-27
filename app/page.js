@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 
 export default function Home() {
+  const [upcData, setUpcData] = useState(null); // Holds the new store table data
   const [discogs, setDiscogs] = useState([]);
   const [ebayActive, setEbayActive] = useState([]);
   
@@ -15,15 +16,16 @@ export default function Home() {
 
   // Layout View Toggles
   const [showMarketLow, setShowMarketLow] = useState(true);
+  const [showUpc, setShowUpc] = useState(true);
   const [showDiscogs, setShowDiscogs] = useState(true);
   const [showEbay, setShowEbay] = useState(true);
 
   // Collapsible Section States
+  const [isUpcOpen, setIsUpcOpen] = useState(true);
   const [isDiscogsOpen, setIsDiscogsOpen] = useState(true);
   const [isEbayActiveOpen, setIsEbayActiveOpen] = useState(true);
   const [isEbaySoldOpen, setIsEbaySoldOpen] = useState(true);
 
-  // Inject barcode library dynamically
   useEffect(() => {
     if (!document.getElementById('html5-qrcode-script')) {
       const script = document.createElement('script');
@@ -57,6 +59,7 @@ export default function Home() {
     setErrorMsg(""); 
     setHasSearched(false);
     
+    setIsUpcOpen(true);
     setIsDiscogsOpen(true);
     setIsEbayActiveOpen(true);
     setIsEbaySoldOpen(true);
@@ -65,22 +68,18 @@ export default function Home() {
       const smallFile = await shrinkImage(file);
       let barcodeText = "";
 
-      // 1. ATTEMPT FRONTEND BARCODE SCAN 
       if (window.Html5Qrcode) {
         try {
           const html5QrCode = new window.Html5Qrcode("hidden-barcode-reader");
           const decodedText = await html5QrCode.scanFile(smallFile, true);
           if (decodedText) {
-             barcodeText = decodedText; // Got the raw number!
+             barcodeText = decodedText; 
           }
-        } catch (scanErr) {
-          // Normal behavior for album cover photos. Proceed to Google Lens.
-        }
+        } catch (scanErr) {}
       }
 
       const formData = new FormData(); 
 
-      // 2. ROUTE BASED ON BARCODE SUCCESS
       if (barcodeText) {
          setLoadingStatus(`Barcode ${barcodeText} found! Fetching market data...`);
          formData.append('barcodeQuery', barcodeText);
@@ -95,6 +94,8 @@ export default function Home() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       
+      // Update UI with the new UPC Match data!
+      setUpcData(data.upcMatch || null);
       setDiscogs(data.discogsMatches || []);
       setEbayActive(data.ebayActiveMatches || []);
       
@@ -125,6 +126,8 @@ export default function Home() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       
+      // Manual text queries wipe the UPC section
+      setUpcData(null);
       setDiscogs(data.discogsMatches || []);
       setEbayActive(data.ebayActiveMatches || []);
       setSoldQuery(data.textQuery || mainQuery);
@@ -158,14 +161,12 @@ export default function Home() {
 
   return (
     <main style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto', backgroundColor: '#fff', paddingBottom: '100px' }}>
-      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '15px' }}>Record Lens V52</h2>
+      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '15px' }}>Record Lens V53</h2>
       
-      {/* Required for HTML5-QRCode to process image files invisibly */}
       <div id="hidden-barcode-reader" style={{ display: 'none' }}></div>
 
       <input type="file" accept="image/*" capture="environment" onChange={handleCapture} style={{ padding: '10px', fontSize: '16px', marginBottom: '15px', width: '100%', backgroundColor: '#f9f9f9', border: '1px solid #ccc', borderRadius: '5px' }} />
       
-      {/* GLOBAL SEARCH BAR */}
       <div style={{ marginBottom: '15px', display: 'flex', gap: '8px' }}>
         <input 
           type="text" 
@@ -183,8 +184,12 @@ export default function Home() {
         </button>
       </div>
 
-      {/* VIEW TOGGLE CHECKBOXES */}
-      <div style={{ display: 'flex', gap: '20px', marginBottom: '25px', fontSize: '14px', fontWeight: 'bold', color: '#444', backgroundColor: '#f5f5f5', padding: '10px 15px', borderRadius: '6px', border: '1px solid #ddd' }}>
+      <div style={{ display: 'flex', gap: '15px', marginBottom: '25px', fontSize: '14px', fontWeight: 'bold', color: '#444', backgroundColor: '#f5f5f5', padding: '10px 15px', borderRadius: '6px', border: '1px solid #ddd', flexWrap: 'wrap' }}>
+        {upcData && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: '#004d40' }}>
+            <input type="checkbox" checked={showUpc} onChange={(e) => setShowUpc(e.target.checked)} style={{ width: '16px', height: '16px' }} /> UPC Table
+          </label>
+        )}
         <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
           <input type="checkbox" checked={showMarketLow} onChange={(e) => setShowMarketLow(e.target.checked)} style={{ width: '16px', height: '16px' }} /> Market Low
         </label>
@@ -199,6 +204,62 @@ export default function Home() {
       {loadingMain && <p style={{ fontWeight: 'bold', color: '#0070f3', marginBottom: '20px' }}>{loadingStatus}</p>}
       {errorMsg && <p style={{ color: 'red', fontWeight: 'bold', backgroundColor: '#fee', padding: '10px', borderRadius: '4px', marginBottom: '20px' }}>{errorMsg}</p>}
       
+      {/* 0. UPC DATABASE SECTION */}
+      {hasSearched && showUpc && upcData && (
+        <div style={{ marginBottom: '40px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', backgroundColor: '#004d40', padding: '10px 15px', borderRadius: '4px' }}>
+            <div onClick={() => setIsUpcOpen(!isUpcOpen)} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+              <h3 style={{ margin: 0, color: 'white' }}>UPC Database Matches</h3>
+              <span style={{ fontSize: '18px', fontWeight: 'bold', color: 'white' }}>{isUpcOpen ? '–' : '+'}</span>
+            </div>
+            <a href={`https://www.upcitemdb.com/upc/${upcData.upc}`} target="_blank" rel="noreferrer" style={{ fontSize: '12px', color: 'white', textDecoration: 'none', fontWeight: 'bold', border: '1px solid white', padding: '4px 8px', borderRadius: '4px' }}>
+              View on UPCitemdb →
+            </a>
+          </div>
+          
+          {isUpcOpen && (
+            <div style={{ border: '1px solid #eee', borderRadius: '6px', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', padding: '15px', backgroundColor: '#fafafa', borderBottom: '1px solid #ddd', gap: '15px', alignItems: 'center' }}>
+                 {upcData.thumbnail && <img src={upcData.thumbnail} alt="UPC Thumbnail" style={{ width: '60px', height: '60px', objectFit: 'contain' }}/>}
+                 <div>
+                     <h4 style={{ margin: '0 0 5px 0', color: '#333' }}>{upcData.title}</h4>
+                     <span style={{ fontSize: '13px', color: '#666', backgroundColor: '#e0e0e0', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>UPC: {upcData.upc}</span>
+                 </div>
+              </div>
+
+              {upcData.offers.length === 0 ? (
+                 <div style={{ padding: '15px' }}><p style={{ margin: 0, fontSize: '14px', color: '#555' }}>No direct store offers found for this exact barcode.</p></div>
+              ) : (
+                 <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left', minWidth: '500px' }}>
+                      <thead>
+                          <tr style={{ backgroundColor: '#e0f2f1', borderBottom: '2px solid #b2dfdb' }}>
+                              <th style={{ padding: '10px', color: '#004d40' }}>Store</th>
+                              <th style={{ padding: '10px', color: '#004d40' }}>Product Info</th>
+                              <th style={{ padding: '10px', color: '#004d40' }}>Price</th>
+                              <th style={{ padding: '10px', color: '#004d40', whiteSpace: 'nowrap' }}>Last Updated</th>
+                          </tr>
+                      </thead>
+                      <tbody>
+                          {upcData.offers.map((offer, i) => (
+                              <tr key={i} style={{ borderBottom: '1px solid #eee', backgroundColor: i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                                  <td style={{ padding: '10px', fontWeight: 'bold', color: '#333' }}>{offer.merchant}</td>
+                                  <td style={{ padding: '10px' }}>
+                                      <a href={offer.link} target="_blank" rel="noreferrer" style={{ color: '#0056b3', textDecoration: 'none', display: '-webkit-box', WebkitLineClamp: '2', WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{offer.title}</a>
+                                  </td>
+                                  <td style={{ padding: '10px', fontWeight: 'bold', color: '#2e7d32', whiteSpace: 'nowrap' }}>{offer.price}</td>
+                                  <td style={{ padding: '10px', color: '#666', whiteSpace: 'nowrap', fontSize: '12px' }}>{offer.updated}</td>
+                              </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                 </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* 1. DISCOGS SECTION */}
       {hasSearched && showDiscogs && (
         <div style={{ marginBottom: '40px' }}>
@@ -223,7 +284,6 @@ export default function Home() {
                 
                 return (
                   <div key={i} style={{ marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '15px' }}>
-                    
                     <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
                       {item.thumbnail ? (
                         <img src={item.thumbnail} alt="match" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '4px', flexShrink: 0 }} />
@@ -277,7 +337,6 @@ export default function Home() {
                         )}
                       </div>
                     </div>
-
                   </div>
                 );
               })
