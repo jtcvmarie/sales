@@ -236,7 +236,7 @@ export default function Home() {
         
         <div style={{ width: '1px', height: '16px', backgroundColor: '#80cbc4', margin: '0 2px' }}></div>
         
-        <span style={{ color: '#00796b' }}>Format:</span>
+        <span style={{ color: '#00796b' }}></span>
         <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
           <input type="checkbox" checked={filter33} onChange={(e) => setFilter33(e.target.checked)} style={{ width: '16px', height: '16px' }} /> 33
         </label>
