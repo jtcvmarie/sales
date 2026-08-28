@@ -6,6 +6,7 @@ export async function POST(request) {
     const file = formData.get('image'); 
     const manualQuery = formData.get('query'); 
     const barcodeQuery = formData.get('barcodeQuery'); 
+    const searchFormats = formData.get('searchFormats') || ""; // NEW: Grabs pre-search formats
 
     const serpapiKey = process.env.SERPAPI_KEY;
     const discogsToken = process.env.DISCOGS_TOKEN;
@@ -35,11 +36,10 @@ export async function POST(request) {
     };
 
     // ==========================================
-    // ROUTE 1: BARCODE BYPASS (Ultra Fast)
+    // ROUTE 1: BARCODE BYPASS
     // ==========================================
     if (barcodeQuery) {
       let resolvedQuery = barcodeQuery; 
-      
       try {
           const upcRes = await fetchWithTimeout(`https://api.upcitemdb.com/prod/trial/lookup?upc=${barcodeQuery}`, {}, 1500);
           if (upcRes.ok) {
@@ -47,7 +47,6 @@ export async function POST(request) {
               if (upcJson.items && upcJson.items.length > 0) {
                   const item = upcJson.items[0];
                   resolvedQuery = item.title || barcodeQuery; 
-                  
                   upcMatch = {
                       upc: item.upc || barcodeQuery,
                       title: item.title || "Unknown Title",
@@ -75,25 +74,19 @@ export async function POST(request) {
           }
       } catch (e) {}
 
-      textQuery = resolvedQuery;
+      // INJECT PRE-SEARCH FORMATS!
+      textQuery = searchFormats ? `${resolvedQuery} ${searchFormats}`.trim() : resolvedQuery;
       
       const dPromise = discogsToken ? fetchWithTimeout(`https://api.discogs.com/database/search?q=${encodeURIComponent(textQuery)}&type=release&per_page=15`, {
-        headers: { 'User-Agent': 'RecordLens/30.0', 'Authorization': `Discogs token=${discogsToken}` }
+        headers: { 'User-Agent': 'RecordLens/31.0', 'Authorization': `Discogs token=${discogsToken}` }
       }, 3000).then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null);
       
       const ePromise = fetchWithTimeout(`https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(textQuery)}&api_key=${serpapiKey}`, {}, 3000)
         .then(r => r.ok ? r.json() : null).catch(() => null);
 
       const [dJson, eJson] = await Promise.all([dPromise, ePromise]);
-
-      if (dJson && dJson.results) {
-          discogsLinks = dJson.results.map(r => ({ link: `https://www.discogs.com/release/${r.id}`, title: r.title, thumbnail: r.thumb }));
-      }
-      if (eJson && eJson.organic_results) {
-          ebayLinks = eJson.organic_results.slice(0, 10).map(r => ({ 
-              link: r.link, title: r.title, thumbnail: r.thumbnail, price: r.price, shipping: r.shipping
-          }));
-      }
+      if (dJson && dJson.results) discogsLinks = dJson.results.map(r => ({ link: `https://www.discogs.com/release/${r.id}`, title: r.title, thumbnail: r.thumb }));
+      if (eJson && eJson.organic_results) ebayLinks = eJson.organic_results.slice(0, 10).map(r => ({ link: r.link, title: r.title, thumbnail: r.thumbnail, price: r.price, shipping: r.shipping }));
     }
     // ==========================================
     // ROUTE 2: IMAGE UPLOAD (Google Lens)
@@ -112,7 +105,10 @@ export async function POST(request) {
 
       let rawTitle = searchJson.knowledge_graph?.[0]?.title || visualMatches[0]?.title || "Vinyl Record";
       let cleanText = rawTitle.replace(/[-|—–]/g, ' ').replace(/[^a-zA-Z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
-      textQuery = cleanText.split(' ').slice(0, 10).join(' ') || "Vinyl Record";
+      let extractedQuery = cleanText.split(' ').slice(0, 10).join(' ') || "Vinyl Record";
+
+      // INJECT PRE-SEARCH FORMATS!
+      textQuery = searchFormats ? `${extractedQuery} ${searchFormats}`.trim() : extractedQuery;
 
       discogsLinks = visualMatches.filter(m => m.link && m.link.toLowerCase().includes('discogs.com')).slice(0, 15);
       ebayLinks = visualMatches.filter(m => m.link && m.link.toLowerCase().includes('ebay.com')).slice(0, 10);
@@ -121,10 +117,11 @@ export async function POST(request) {
     // ROUTE 3: MANUAL TEXT SEARCH
     // ==========================================
     else if (manualQuery) {
-      textQuery = manualQuery;
+      // INJECT PRE-SEARCH FORMATS!
+      textQuery = searchFormats && !manualQuery.includes(searchFormats) ? `${manualQuery} ${searchFormats}`.trim() : manualQuery;
       
       const dPromise = discogsToken ? fetchWithTimeout(`https://api.discogs.com/database/search?q=${encodeURIComponent(textQuery)}&type=release&per_page=15`, {
-        headers: { 'User-Agent': 'RecordLens/30.0', 'Authorization': `Discogs token=${discogsToken}` }
+        headers: { 'User-Agent': 'RecordLens/31.0', 'Authorization': `Discogs token=${discogsToken}` }
       }, 3000).then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null);
       
       const ePromise = fetchWithTimeout(`https://serpapi.com/search.json?engine=ebay&_nkw=${encodeURIComponent(textQuery)}&api_key=${serpapiKey}`, {}, 3000)
@@ -132,14 +129,8 @@ export async function POST(request) {
 
       const [dJson, eJson] = await Promise.all([dPromise, ePromise]);
 
-      if (dJson && dJson.results) {
-          discogsLinks = dJson.results.map(r => ({ link: `https://www.discogs.com/release/${r.id}`, title: r.title, thumbnail: r.thumb }));
-      }
-      if (eJson && eJson.organic_results) {
-          ebayLinks = eJson.organic_results.slice(0, 10).map(r => ({ 
-              link: r.link, title: r.title, thumbnail: r.thumbnail, price: r.price, shipping: r.shipping
-          }));
-      }
+      if (dJson && dJson.results) discogsLinks = dJson.results.map(r => ({ link: `https://www.discogs.com/release/${r.id}`, title: r.title, thumbnail: r.thumb }));
+      if (eJson && eJson.organic_results) ebayLinks = eJson.organic_results.slice(0, 10).map(r => ({ link: r.link, title: r.title, thumbnail: r.thumbnail, price: r.price, shipping: r.shipping }));
     } else {
       return NextResponse.json({ error: "No image or query provided" }, { status: 400 });
     }
@@ -154,7 +145,7 @@ export async function POST(request) {
         const idMatch = match.link.match(/\/(?:release|master|sell\/(?:release|item|history))\/(\d+)/i);
         if (idMatch) {
           let id = idMatch[1];
-          const headers = { 'User-Agent': 'RecordLens/30.0', 'Authorization': `Discogs token=${discogsToken}` };
+          const headers = { 'User-Agent': 'RecordLens/31.0', 'Authorization': `Discogs token=${discogsToken}` };
           try {
             if (match.link.includes('/master/')) {
               const mRes = await fetchWithTimeout(`https://api.discogs.com/masters/${id}`, { headers }, 1200);
@@ -227,17 +218,12 @@ export async function POST(request) {
           }
         } catch (e) {}
       }
-      return { 
-          title: m.title || "", 
-          link: m.link || "", 
-          thumbnail: m.thumbnail || "", 
-          price: price || "", 
-          shipping: shipping || "" 
-      };
+      return { title: m.title || "", link: m.link || "", thumbnail: m.thumbnail || "", price: price || "", shipping: shipping || "" };
     }));
 
     const [discogsMatches, ebayActiveMatches] = await Promise.all([ discogsTask, ebayActiveTask ]);
 
+    // Send back textQuery so the user sees exactly what was searched (including injected formats)
     return NextResponse.json({ upcMatch, discogsMatches, ebayActiveMatches, textQuery });
     
   } catch (error) {
