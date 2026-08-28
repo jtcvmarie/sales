@@ -22,7 +22,7 @@ export default function Home() {
   const [showDiscogs, setShowDiscogs] = useState(true);
   const [showEbay, setShowEbay] = useState(true);
 
-  // Discogs Instant Filters (Also injects into Search Query)
+  // Discogs Instant Filters & Pre-Search Injection
   const [filter33, setFilter33] = useState(false);
   const [filter45, setFilter45] = useState(false);
   const [filter78, setFilter78] = useState(false);
@@ -44,12 +44,12 @@ export default function Home() {
     }
   }, []);
 
-  // Helper to grab checked formats to inject into backend query
+  // Helper to map 33 to "vinyl", and others directly without "RPM"
   const getSearchFormatString = () => {
     let formats = [];
-    if (filter33) formats.push("LP"); // LP maps better in text searches than 33
-    if (filter45) formats.push("45 RPM");
-    if (filter78) formats.push("78 RPM");
+    if (filter33) formats.push("vinyl");
+    if (filter45) formats.push("45");
+    if (filter78) formats.push("78");
     if (filterCD) formats.push("CD");
     return formats.join(" ");
   };
@@ -86,7 +86,6 @@ export default function Home() {
       const smallFile = await shrinkImage(file);
       let barcodeText = "";
 
-      // 1. CONDITIONAL BARCODE SCAN (Skipped if unchecked to save ~1.5s!)
       if (enableBarcode && window.Html5Qrcode) {
         try {
           const html5QrCode = new window.Html5Qrcode("hidden-barcode-reader");
@@ -98,7 +97,7 @@ export default function Home() {
       }
 
       const formData = new FormData(); 
-      formData.append('searchFormats', getSearchFormatString()); // Inject formats!
+      formData.append('searchFormats', getSearchFormatString()); 
 
       if (barcodeText) {
          setLoadingStatus(`Barcode ${barcodeText} found! Fetching market data...`);
@@ -117,7 +116,6 @@ export default function Home() {
       setDiscogs(data.discogsMatches || []);
       setEbayActive(data.ebayActiveMatches || []);
       
-      // Update inputs with exactly what the backend decided to search
       setMainQuery(data.textQuery || "");
       setSoldQuery(data.textQuery || "");
       setHasSearched(true);
@@ -138,7 +136,7 @@ export default function Home() {
     try {
       const formData = new FormData();
       formData.append('query', mainQuery);
-      formData.append('searchFormats', getSearchFormatString()); // Inject formats!
+      formData.append('searchFormats', getSearchFormatString()); 
       
       const res = await fetch('/api/search', { method: 'POST', body: formData });
       if (!res.ok) throw new Error(`Server returned status ${res.status}`);
@@ -195,7 +193,6 @@ export default function Home() {
     });
   };
 
-  // POST-SEARCH INSTANT FILTERING
   const filteredDiscogs = discogs.filter(item => {
      if (!filter33 && !filter45 && !filter78 && !filterCD) return true; 
      const fmt = (item.discogsData?.format || "").toLowerCase();
@@ -206,7 +203,8 @@ export default function Home() {
      return false;
   });
 
-  const discogsDirectUrl = mainQuery ? `https://www.discogs.com/search?q=${encodeURIComponent(mainQuery)}&type=release` : '#';
+  // Discogs Med View URL format requested
+  const discogsDirectUrl = mainQuery ? `https://www.discogs.com/search?q=${encodeURIComponent(mainQuery)}&type=release&layout=med` : '#';
   const ebayActiveDirectUrl = mainQuery ? `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(mainQuery)}` : '#';
   const ebaySoldDirectUrl = soldQuery ? `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(soldQuery)}&LH_Sold=1&LH_Complete=1` : '#';
 
@@ -223,20 +221,36 @@ export default function Home() {
         }
       `}</style>
 
-      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '15px' }}>Record Lens V58</h2>
+      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '15px' }}>Record Lens V59</h2>
       
       <div id="hidden-barcode-reader" style={{ display: 'none' }}></div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '15px' }}>
-          <input type="file" accept="image/*" capture="environment" onChange={handleCapture} style={{ padding: '10px', fontSize: '16px', width: '100%', backgroundColor: '#f9f9f9', border: '1px solid #ccc', borderRadius: '5px' }} />
-          
-          {/* SPEED TOGGLE */}
-          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', backgroundColor: '#e0f2f1', padding: '8px 12px', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold', color: '#004d40', border: '1px solid #b2dfdb', alignSelf: 'flex-start' }}>
-            <input type="checkbox" checked={enableBarcode} onChange={(e) => setEnableBarcode(e.target.checked)} style={{ width: '16px', height: '16px' }} /> 
-            Enable Barcode Scanner
-          </label>
-      </div>
+      <input type="file" accept="image/*" capture="environment" onChange={handleCapture} style={{ padding: '10px', fontSize: '16px', marginBottom: '12px', width: '100%', backgroundColor: '#f9f9f9', border: '1px solid #ccc', borderRadius: '5px' }} />
       
+      {/* UNIFIED BARCODE AND FORMAT CHECKBOX ROW */}
+      <div style={{ display: 'flex', gap: '15px', marginBottom: '15px', fontSize: '13px', fontWeight: 'bold', color: '#004d40', backgroundColor: '#e0f2f1', padding: '10px 15px', borderRadius: '6px', border: '1px solid #b2dfdb', flexWrap: 'wrap', alignItems: 'center' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+          <input type="checkbox" checked={enableBarcode} onChange={(e) => setEnableBarcode(e.target.checked)} style={{ width: '16px', height: '16px' }} /> 
+          Barcode
+        </label>
+        
+        <div style={{ width: '1px', height: '16px', backgroundColor: '#80cbc4', margin: '0 2px' }}></div>
+        
+        <span style={{ color: '#00796b' }}>Format:</span>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+          <input type="checkbox" checked={filter33} onChange={(e) => setFilter33(e.target.checked)} style={{ width: '16px', height: '16px' }} /> 33
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+          <input type="checkbox" checked={filter45} onChange={(e) => setFilter45(e.target.checked)} style={{ width: '16px', height: '16px' }} /> 45
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+          <input type="checkbox" checked={filter78} onChange={(e) => setFilter78(e.target.checked)} style={{ width: '16px', height: '16px' }} /> 78
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+          <input type="checkbox" checked={filterCD} onChange={(e) => setFilterCD(e.target.checked)} style={{ width: '16px', height: '16px' }} /> CD
+        </label>
+      </div>
+
       {/* GLOBAL SEARCH BAR */}
       <div style={{ marginBottom: '15px', display: 'flex', gap: '8px' }}>
         <input 
@@ -255,25 +269,8 @@ export default function Home() {
         </button>
       </div>
 
-      {/* DISCOGS FORMAT FILTERS (Pre & Post Search) */}
-      <div style={{ display: 'flex', gap: '15px', marginBottom: '15px', fontSize: '14px', fontWeight: 'bold', color: '#651fff', backgroundColor: '#f3e5f5', padding: '10px 15px', borderRadius: '6px', border: '1px solid #e1bee7', flexWrap: 'wrap' }}>
-        <span style={{ marginRight: '5px' }}>Format Filter:</span>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
-          <input type="checkbox" checked={filter33} onChange={(e) => setFilter33(e.target.checked)} style={{ width: '16px', height: '16px' }} /> 33
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
-          <input type="checkbox" checked={filter45} onChange={(e) => setFilter45(e.target.checked)} style={{ width: '16px', height: '16px' }} /> 45
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
-          <input type="checkbox" checked={filter78} onChange={(e) => setFilter78(e.target.checked)} style={{ width: '16px', height: '16px' }} /> 78
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
-          <input type="checkbox" checked={filterCD} onChange={(e) => setFilterCD(e.target.checked)} style={{ width: '16px', height: '16px' }} /> CD
-        </label>
-      </div>
-
-      {/* GLOBAL VIEW TOGGLES */}
-      <div style={{ display: 'flex', gap: '15px', marginBottom: '25px', fontSize: '14px', fontWeight: 'bold', color: '#444', backgroundColor: '#f5f5f5', padding: '10px 15px', borderRadius: '6px', border: '1px solid #ddd', flexWrap: 'wrap' }}>
+      {/* CENTERED GLOBAL VIEW TOGGLES */}
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '25px', marginBottom: '25px', fontSize: '14px', fontWeight: 'bold', color: '#444', backgroundColor: '#f5f5f5', padding: '10px 15px', borderRadius: '6px', border: '1px solid #ddd', flexWrap: 'wrap' }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
           <input type="checkbox" checked={showMarketLow} onChange={(e) => setShowMarketLow(e.target.checked)} style={{ width: '16px', height: '16px' }} /> Market Low
         </label>
