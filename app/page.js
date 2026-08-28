@@ -14,15 +14,19 @@ export default function Home() {
   const [errorMsg, setErrorMsg] = useState("");
   const [hasSearched, setHasSearched] = useState(false);
 
+  // SPEED OPTIMIZATION: Barcode Toggle
+  const [enableBarcode, setEnableBarcode] = useState(false);
+
   // Layout View Toggles
   const [showMarketLow, setShowMarketLow] = useState(true);
   const [showDiscogs, setShowDiscogs] = useState(true);
   const [showEbay, setShowEbay] = useState(true);
 
-  // Discogs Instant Filters
+  // Discogs Instant Filters (Also injects into Search Query)
   const [filter33, setFilter33] = useState(false);
   const [filter45, setFilter45] = useState(false);
   const [filter78, setFilter78] = useState(false);
+  const [filterCD, setFilterCD] = useState(false);
 
   // Collapsible Section States
   const [isUpcOpen, setIsUpcOpen] = useState(true);
@@ -39,6 +43,16 @@ export default function Home() {
       document.body.appendChild(script);
     }
   }, []);
+
+  // Helper to grab checked formats to inject into backend query
+  const getSearchFormatString = () => {
+    let formats = [];
+    if (filter33) formats.push("LP"); // LP maps better in text searches than 33
+    if (filter45) formats.push("45 RPM");
+    if (filter78) formats.push("78 RPM");
+    if (filterCD) formats.push("CD");
+    return formats.join(" ");
+  };
 
   const shrinkImage = (file) => { 
     return new Promise((resolve) => {
@@ -59,7 +73,7 @@ export default function Home() {
     if (!file) return;
     
     setLoadingMain(true); 
-    setLoadingStatus("Scanning barcode...");
+    setLoadingStatus(enableBarcode ? "Scanning barcode..." : "Scanning album artwork...");
     setErrorMsg(""); 
     setHasSearched(false);
     
@@ -72,7 +86,8 @@ export default function Home() {
       const smallFile = await shrinkImage(file);
       let barcodeText = "";
 
-      if (window.Html5Qrcode) {
+      // 1. CONDITIONAL BARCODE SCAN (Skipped if unchecked to save ~1.5s!)
+      if (enableBarcode && window.Html5Qrcode) {
         try {
           const html5QrCode = new window.Html5Qrcode("hidden-barcode-reader");
           const decodedText = await html5QrCode.scanFile(smallFile, true);
@@ -83,12 +98,12 @@ export default function Home() {
       }
 
       const formData = new FormData(); 
+      formData.append('searchFormats', getSearchFormatString()); // Inject formats!
 
       if (barcodeText) {
          setLoadingStatus(`Barcode ${barcodeText} found! Fetching market data...`);
          formData.append('barcodeQuery', barcodeText);
       } else {
-         setLoadingStatus("Scanning album artwork via Google Lens...");
          formData.append('image', smallFile);
       }
       
@@ -102,8 +117,9 @@ export default function Home() {
       setDiscogs(data.discogsMatches || []);
       setEbayActive(data.ebayActiveMatches || []);
       
-      setMainQuery(data.textQuery || barcodeText || "");
-      setSoldQuery(data.textQuery || barcodeText || "");
+      // Update inputs with exactly what the backend decided to search
+      setMainQuery(data.textQuery || "");
+      setSoldQuery(data.textQuery || "");
       setHasSearched(true);
     } catch (error) { 
       setErrorMsg("Error: " + error.message); 
@@ -122,6 +138,7 @@ export default function Home() {
     try {
       const formData = new FormData();
       formData.append('query', mainQuery);
+      formData.append('searchFormats', getSearchFormatString()); // Inject formats!
       
       const res = await fetch('/api/search', { method: 'POST', body: formData });
       if (!res.ok) throw new Error(`Server returned status ${res.status}`);
@@ -141,12 +158,10 @@ export default function Home() {
     }
   };
 
-  // ADVANCED FORMAT COLORIZER (Strict word-boundary \b Regex to fix the Blurple stickered bug)
   const renderFormat = (fmtStr) => {
     if (!fmtStr || typeof fmtStr !== 'string' || fmtStr === '--') return '--';
     
     const mediaKeywords = ['vinyl', 'lp', '45', '78', '33', 'shellac', 'cassette', '7"', '10"', '12"', 'cd'];
-    
     const colorKeywords = [
         'red', 'yellow', 'orange', 'green', 'blue', 'purple', 'black', 'indigo', 'silver', 'gray', 'grey', 'white', 
         'marble', 'translucent', 'opal', 'pink', 'teal', 'forest', 'jade', 'amber', 'clear', 'magenta', 'cream', 
@@ -156,14 +171,13 @@ export default function Home() {
         'blend', 'swamp', 'candy', 'lavender', 'chocolate'
     ];
     
-    // The \b ensures 'red' only matches if it stands alone, skipping words like 'stickered'
     const colorRegex = new RegExp('\\b(' + colorKeywords.join('|') + ')\\b', 'i');
 
     const parts = fmtStr.split(', ');
     return parts.map((part, i) => {
       const lowerPart = part.toLowerCase();
       const isMedia = mediaKeywords.some(k => lowerPart.includes(k));
-      const isColor = !isMedia && colorRegex.test(part); // V57 Regex Fix
+      const isColor = !isMedia && colorRegex.test(part);
       
       let styleObj = {};
       if (isMedia) {
@@ -181,13 +195,14 @@ export default function Home() {
     });
   };
 
-  // INSTANT FORMAT FILTER LOGIC (Runs right before rendering)
+  // POST-SEARCH INSTANT FILTERING
   const filteredDiscogs = discogs.filter(item => {
-     if (!filter33 && !filter45 && !filter78) return true; // Show all if none checked
+     if (!filter33 && !filter45 && !filter78 && !filterCD) return true; 
      const fmt = (item.discogsData?.format || "").toLowerCase();
-     if (filter33 && (fmt.includes('33') || fmt.includes('lp'))) return true;
+     if (filter33 && (fmt.includes('33') || fmt.includes('lp') || fmt.includes('vinyl'))) return true;
      if (filter45 && fmt.includes('45')) return true;
      if (filter78 && fmt.includes('78')) return true;
+     if (filterCD && fmt.includes('cd')) return true;
      return false;
   });
 
@@ -198,7 +213,6 @@ export default function Home() {
   return (
     <main style={{ padding: '15px', fontFamily: 'sans-serif', maxWidth: '600px', margin: '0 auto', backgroundColor: '#fff', paddingBottom: '100px' }}>
       
-      {/* CSS Block to kill scrollbars globally but preserve smooth touch/swipe */}
       <style>{`
         .hide-scroll::-webkit-scrollbar {
           display: none;
@@ -209,11 +223,19 @@ export default function Home() {
         }
       `}</style>
 
-      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '15px' }}>Record Lens V57</h2>
+      <h2 style={{ borderBottom: '2px solid black', paddingBottom: '10px', marginBottom: '15px' }}>Record Lens V58</h2>
       
       <div id="hidden-barcode-reader" style={{ display: 'none' }}></div>
 
-      <input type="file" accept="image/*" capture="environment" onChange={handleCapture} style={{ padding: '10px', fontSize: '16px', marginBottom: '15px', width: '100%', backgroundColor: '#f9f9f9', border: '1px solid #ccc', borderRadius: '5px' }} />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '15px' }}>
+          <input type="file" accept="image/*" capture="environment" onChange={handleCapture} style={{ padding: '10px', fontSize: '16px', width: '100%', backgroundColor: '#f9f9f9', border: '1px solid #ccc', borderRadius: '5px' }} />
+          
+          {/* SPEED TOGGLE */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', backgroundColor: '#e0f2f1', padding: '8px 12px', borderRadius: '6px', fontSize: '13px', fontWeight: 'bold', color: '#004d40', border: '1px solid #b2dfdb', alignSelf: 'flex-start' }}>
+            <input type="checkbox" checked={enableBarcode} onChange={(e) => setEnableBarcode(e.target.checked)} style={{ width: '16px', height: '16px' }} /> 
+            Enable Barcode Scanner
+          </label>
+      </div>
       
       {/* GLOBAL SEARCH BAR */}
       <div style={{ marginBottom: '15px', display: 'flex', gap: '8px' }}>
@@ -221,7 +243,7 @@ export default function Home() {
           type="text" 
           value={mainQuery} 
           onChange={(e) => setMainQuery(e.target.value)} 
-          placeholder="Main search (Discogs & eBay Active)..."
+          placeholder="Main search (Discogs & eBay)..."
           style={{ flex: 1, padding: '10px', fontSize: '15px', borderRadius: '4px', border: '1px solid #aaa' }}
         />
         <button 
@@ -233,8 +255,25 @@ export default function Home() {
         </button>
       </div>
 
+      {/* DISCOGS FORMAT FILTERS (Pre & Post Search) */}
+      <div style={{ display: 'flex', gap: '15px', marginBottom: '15px', fontSize: '14px', fontWeight: 'bold', color: '#651fff', backgroundColor: '#f3e5f5', padding: '10px 15px', borderRadius: '6px', border: '1px solid #e1bee7', flexWrap: 'wrap' }}>
+        <span style={{ marginRight: '5px' }}>Format Filter:</span>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+          <input type="checkbox" checked={filter33} onChange={(e) => setFilter33(e.target.checked)} style={{ width: '16px', height: '16px' }} /> 33
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+          <input type="checkbox" checked={filter45} onChange={(e) => setFilter45(e.target.checked)} style={{ width: '16px', height: '16px' }} /> 45
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+          <input type="checkbox" checked={filter78} onChange={(e) => setFilter78(e.target.checked)} style={{ width: '16px', height: '16px' }} /> 78
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+          <input type="checkbox" checked={filterCD} onChange={(e) => setFilterCD(e.target.checked)} style={{ width: '16px', height: '16px' }} /> CD
+        </label>
+      </div>
+
       {/* GLOBAL VIEW TOGGLES */}
-      <div style={{ display: 'flex', gap: '15px', marginBottom: '15px', fontSize: '14px', fontWeight: 'bold', color: '#444', backgroundColor: '#f5f5f5', padding: '10px 15px', borderRadius: '6px', border: '1px solid #ddd', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: '15px', marginBottom: '25px', fontSize: '14px', fontWeight: 'bold', color: '#444', backgroundColor: '#f5f5f5', padding: '10px 15px', borderRadius: '6px', border: '1px solid #ddd', flexWrap: 'wrap' }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
           <input type="checkbox" checked={showMarketLow} onChange={(e) => setShowMarketLow(e.target.checked)} style={{ width: '16px', height: '16px' }} /> Market Low
         </label>
@@ -243,20 +282,6 @@ export default function Home() {
         </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
           <input type="checkbox" checked={showEbay} onChange={(e) => setShowEbay(e.target.checked)} style={{ width: '16px', height: '16px' }} /> eBay
-        </label>
-      </div>
-
-      {/* DISCOGS FORMAT FILTERS (Instant UI Update) */}
-      <div style={{ display: 'flex', gap: '15px', marginBottom: '25px', fontSize: '14px', fontWeight: 'bold', color: '#651fff', backgroundColor: '#f3e5f5', padding: '10px 15px', borderRadius: '6px', border: '1px solid #e1bee7', flexWrap: 'wrap' }}>
-        <span style={{ marginRight: '5px' }}>Filter Formats:</span>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-          <input type="checkbox" checked={filter33} onChange={(e) => setFilter33(e.target.checked)} style={{ width: '16px', height: '16px' }} /> 33
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-          <input type="checkbox" checked={filter45} onChange={(e) => setFilter45(e.target.checked)} style={{ width: '16px', height: '16px' }} /> 45
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-          <input type="checkbox" checked={filter78} onChange={(e) => setFilter78(e.target.checked)} style={{ width: '16px', height: '16px' }} /> 78
         </label>
       </div>
 
@@ -319,7 +344,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 1. DISCOGS SECTION (V57 Table-Wrapped scrolling update) */}
+      {/* 1. DISCOGS SECTION */}
       {hasSearched && showDiscogs && (
         <div style={{ marginBottom: '40px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', backgroundColor: '#222', padding: '10px 15px', borderRadius: '4px' }}>
@@ -338,7 +363,6 @@ export default function Home() {
                 <p style={{ margin: 0, fontSize: '14px', color: '#555' }}>0 Discogs matches found for selected format.</p>
               </div>
             ) : (
-              // The entire list is now wrapped in one horizontally scrollable container!
               <div className="hide-scroll" style={{ overflowX: 'auto', backgroundColor: '#fff', border: '1px solid #ddd', borderRadius: '6px', WebkitOverflowScrolling: 'touch' }}>
                 <div style={{ minWidth: '100%', width: 'max-content', display: 'flex', flexDirection: 'column' }}>
                   {filteredDiscogs.map((item, i) => {
@@ -347,7 +371,6 @@ export default function Home() {
                     return (
                       <div key={i} style={{ padding: '15px', borderBottom: i === filteredDiscogs.length - 1 ? 'none' : '1px solid #eee' }}>
                         
-                        {/* TOP HALF: Title securely wrapped to max 540px to prevent endless stretching */}
                         <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start', maxWidth: 'min(calc(100vw - 60px), 540px)', whiteSpace: 'normal' }}>
                           {item.thumbnail ? (
                             <img src={item.thumbnail} alt="match" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '4px', flexShrink: 0 }} />
@@ -382,13 +405,11 @@ export default function Home() {
                           </div>
                         </div>
 
-                        {/* BOTTOM HALF: The Metadata that acts like a table */}
                         <div style={{ fontSize: '12px', color: '#333', marginTop: '10px' }}>
                           <div style={{ marginBottom: '4px', textAlign: 'left', maxWidth: 'min(calc(100vw - 60px), 540px)', whiteSpace: 'normal' }}>
                             <span style={{ color: '#4527a0', fontWeight: 'bold' }}>Format:</span> {renderFormat(dData.format)}
                           </div>
                           
-                          {/* Label, Country, Released naturally push the whole container wide! */}
                           <div style={{ display: 'flex', gap: '15px', whiteSpace: 'nowrap', textAlign: 'left' }}>
                             {dData.label && dData.label !== '--' && (
                               <div><span style={{ color: '#4527a0', fontWeight: 'bold' }}>Label:</span> {String(dData.label)}</div>
