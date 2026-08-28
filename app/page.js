@@ -231,7 +231,7 @@ export default function Home() {
       <div style={{ display: 'flex', gap: '15px', marginBottom: '15px', fontSize: '13px', fontWeight: 'bold', color: '#004d40', backgroundColor: '#e0f2f1', padding: '10px 15px', borderRadius: '6px', border: '1px solid #b2dfdb', flexWrap: 'wrap', alignItems: 'center' }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
           <input type="checkbox" checked={enableBarcode} onChange={(e) => setEnableBarcode(e.target.checked)} style={{ width: '16px', height: '16px' }} /> 
-          Barcode
+          UPC
         </label>
         
         <div style={{ width: '1px', height: '16px', backgroundColor: '#80cbc4', margin: '0 2px' }}></div>
